@@ -21,6 +21,14 @@ internal enum SupportedPropertyKind
      StringList
 }
 
+internal enum ConverterKind
+{
+     None = 0,
+     Simple = 1,       // IXlsxConverter<TProp>
+     RowAware = 2,     // IXlsxRowConverter<TRow, TProp>
+     RowAndContext = 3 // IXlsxRowConverter<TRow, TContext, TProp>
+}
+
 internal sealed record EnumMemberInfo(
     string MemberName,
     long NumericValue,
@@ -66,7 +74,11 @@ internal sealed record PropertyModel(
     int FixedColumnIndex, // -1 si non spécifié
     char? SplitSeparator,
     bool SplitTrimEntries,
-    bool SplitRemoveEmptyEntries
+    bool SplitRemoveEmptyEntries,
+    bool IsInitOnly,
+    int ConstructorParamIndex,
+    string? ConverterTypeFullName,
+    ConverterKind ConverterKind
 );
 
 internal sealed record TypeModel(
@@ -76,10 +88,21 @@ internal sealed record TypeModel(
     bool IsValueType,
     bool HasParameterlessConstructor,
     string? ContextTypeFullName,
-    ImmutableArray<PropertyModel> Properties
+    ImmutableArray<PropertyModel> Properties,
+    bool UsesParameterizedConstructor,
+    ImmutableArray<ConstructorParamModel> ConstructorParameters,
+    bool HasInitOrRowConverters
 );
 
 internal sealed record GenerationResult(
     TypeModel? Model,
     ImmutableArray<Diagnostic> Diagnostics
+);
+
+internal sealed record ConstructorParamModel(
+    string ParameterName,
+    string TypeFullName,
+    int MappedPropertyIndex, // -1 si paramètre optionnel non mappé à une propriété
+    bool HasDefaultValue,
+    string? DefaultValueLiteral
 );

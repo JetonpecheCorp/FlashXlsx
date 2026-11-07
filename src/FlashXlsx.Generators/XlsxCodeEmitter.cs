@@ -66,6 +66,46 @@ internal static class XlsxCodeEmitter
           sb.AppendLine($"    public static readonly {mapClassName} Instance = new();");
           sb.AppendLine();
 
+          // État [ThreadStatic] pour les record positionnels / propriétés init / IXlsxRowConverter (zéro allocation par ligne)
+          if (model.HasInitOrRowConverters)
+          {
+               sb.AppendLine("    private sealed class PendingRowBuffer");
+               sb.AppendLine("    {");
+               for (int i = 0; i < model.Properties.Length; i++)
+               {
+                    var p = model.Properties[i];
+                    sb.AppendLine($"        public {p.TypeFullName} Val_{i} = default!;");
+                    if (p.ConverterKind is ConverterKind.RowAware or ConverterKind.RowAndContext)
+                    {
+                         sb.AppendLine($"        public string? Raw_{i};");
+                         sb.AppendLine($"        public bool HasRaw_{i};");
+                    }
+               }
+               sb.AppendLine("        public void Reset()");
+               sb.AppendLine("        {");
+               for (int i = 0; i < model.Properties.Length; i++)
+               {
+                    var p = model.Properties[i];
+                    if (p.HasDefaultValue)
+                         sb.AppendLine($"            Val_{i} = {FormatDefaultValueLiteral(p)};");
+                    else
+                         sb.AppendLine($"            Val_{i} = default!;");
+
+                    if (p.ConverterKind is ConverterKind.RowAware or ConverterKind.RowAndContext)
+                    {
+                         sb.AppendLine($"            Raw_{i} = null;");
+                         sb.AppendLine($"            HasRaw_{i} = false;");
+                    }
+               }
+               sb.AppendLine("        }");
+               sb.AppendLine("    }");
+               sb.AppendLine();
+               sb.AppendLine("    [ThreadStatic] private static PendingRowBuffer? _tlsBuffer;");
+               sb.AppendLine("    private static PendingRowBuffer GetBuffer() => _tlsBuffer ??= new PendingRowBuffer();");
+               sb.AppendLine();
+          }
+
+          // Instances statiques des conditions [XlsxRequiredIf] / [XlsxIgnoreIf]
           var conditionTypes = model.Properties
               .SelectMany(p => new[] { p.RequiredIfConditionType, p.IgnoreIfConditionType })
               .Where(c => c is not null)
@@ -73,11 +113,21 @@ internal static class XlsxCodeEmitter
               .ToList();
 
           for (int i = 0; i < conditionTypes.Count; i++)
-          {
                sb.AppendLine($"    private static readonly {conditionTypes[i]} _cond{i} = new();");
-          }
           if (conditionTypes.Count > 0) sb.AppendLine();
 
+          // Instances statiques des convertisseurs [XlsxConverter]
+          var converterTypes = model.Properties
+              .Select(p => p.ConverterTypeFullName)
+              .Where(c => c is not null)
+              .Distinct()
+              .ToList();
+
+          for (int i = 0; i < converterTypes.Count; i++)
+               sb.AppendLine($"    private static readonly {converterTypes[i]} _conv{i} = new();");
+          if (converterTypes.Count > 0) sb.AppendLine();
+
+          // Regex compilées
           for (int i = 0; i < model.Properties.Length; i++)
           {
                var p = model.Properties[i];
@@ -95,23 +145,33 @@ internal static class XlsxCodeEmitter
           sb.AppendLine($"    public int ColumnCount => {model.Properties.Length};");
           sb.AppendLine();
 
-          // CreateInstance (avec initialisation des [XlsxDefault])
+          // CreateInstance
           sb.AppendLine($"    public {t} CreateInstance()");
           sb.AppendLine("    {");
-          sb.AppendLine($"        var instance = new {t}();");
-          foreach (var p in model.Properties)
+          if (model.HasInitOrRowConverters)
           {
-               if (p.HasDefaultValue)
-               {
-                    string literal = FormatDefaultValueLiteral(p);
-                    sb.AppendLine($"        instance.{p.Name} = {literal};");
-               }
+               sb.AppendLine("        GetBuffer().Reset();");
           }
-          sb.AppendLine("        return instance;");
+          if (model.HasParameterlessConstructor)
+          {
+               sb.AppendLine($"        var instance = new {t}();");
+               foreach (var p in model.Properties)
+               {
+                    if (p.HasDefaultValue && !p.IsInitOnly)
+                    {
+                         sb.AppendLine($"        instance.{p.Name} = {FormatDefaultValueLiteral(p)};");
+                    }
+               }
+               sb.AppendLine("        return instance;");
+          }
+          else
+          {
+               sb.AppendLine("        return default!;");
+          }
           sb.AppendLine("    }");
           sb.AppendLine();
 
-          // GetFixedColumnIndex ([XlsxColumnLetter])
+          // GetFixedColumnIndex
           sb.AppendLine("    public int GetFixedColumnIndex(int propertyIndex) => propertyIndex switch");
           sb.AppendLine("    {");
           for (int i = 0; i < model.Properties.Length; i++)
@@ -123,7 +183,7 @@ internal static class XlsxCodeEmitter
           sb.AppendLine("    };");
           sb.AppendLine();
 
-          // GetDropdownValues ([XlsxAllowedValues] ou enum)
+          // GetDropdownValues
           sb.AppendLine("    public string[]? GetDropdownValues(int propertyIndex) => propertyIndex switch");
           sb.AppendLine("    {");
           for (int i = 0; i < model.Properties.Length; i++)
@@ -182,21 +242,24 @@ internal static class XlsxCodeEmitter
           sb.AppendLine("    }");
           sb.AppendLine();
 
-          EmitTrySetCellValue(sb, model);
-          EmitValidateRow(sb, model, conditionTypes, withContext: false);
-          if (hasContext) EmitValidateRow(sb, model, conditionTypes, withContext: true);
+          EmitTrySetCellValue(sb, model, converterTypes);
+          EmitValidateRow(sb, model, conditionTypes, converterTypes, withContext: false);
+          if (hasContext) EmitValidateRow(sb, model, conditionTypes, converterTypes, withContext: true);
 
-          EmitTryFormatCellValue(sb, model, conditionTypes, withContext: false);
-          if (hasContext) EmitTryFormatCellValue(sb, model, conditionTypes, withContext: true);
+          EmitTryFormatCellValue(sb, model, conditionTypes, converterTypes, withContext: false);
+          if (hasContext) EmitTryFormatCellValue(sb, model, conditionTypes, converterTypes, withContext: true);
 
           sb.AppendLine("}");
           return sb.ToString();
      }
 
-     private static void EmitTrySetCellValue(StringBuilder sb, TypeModel model)
+     private static void EmitTrySetCellValue(StringBuilder sb, TypeModel model, List<string?> converterTypes)
      {
           sb.AppendLine($"    public XlsxCellStatus TrySetCellValue(ref {model.FullTypeName} instance, int propertyIndex, ReadOnlySpan<char> rawValue, bool isNumericCell, XlsxReadOptions options)");
           sb.AppendLine("    {");
+          if (model.HasInitOrRowConverters)
+               sb.AppendLine("        var buf = GetBuffer();");
+
           sb.AppendLine("        switch (propertyIndex)");
           sb.AppendLine("        {");
 
@@ -205,6 +268,33 @@ internal static class XlsxCodeEmitter
                var p = model.Properties[i];
                sb.AppendLine($"            case {i}: // {p.Name}");
                sb.AppendLine("            {");
+
+               string assignExpr = model.HasInitOrRowConverters
+                   ? $"buf.Val_{i}"
+                   : $"instance.{p.Name}";
+
+               // Convertisseur dépendant de la ligne (évalué dans ValidateRow une fois toutes les colonnes lues)
+               if (p.ConverterKind is ConverterKind.RowAware or ConverterKind.RowAndContext)
+               {
+                    sb.AppendLine($"                buf.Raw_{i} = rawValue.IsEmpty ? string.Empty : rawValue.ToString();");
+                    sb.AppendLine($"                buf.HasRaw_{i} = true;");
+                    sb.AppendLine("                return XlsxCellStatus.Success;");
+                    sb.AppendLine("            }");
+                    continue;
+               }
+
+               // Convertisseur simple IXlsxConverter<TProperty>
+               if (p.ConverterKind == ConverterKind.Simple)
+               {
+                    int convIdx = converterTypes.IndexOf(p.ConverterTypeFullName);
+                    sb.AppendLine("                if (rawValue.IsEmpty) return XlsxCellStatus.Empty;");
+                    sb.AppendLine($"                if (!_conv{convIdx}.TryRead(rawValue, options, out {p.TypeFullName} val))");
+                    sb.AppendLine("                    return XlsxCellStatus.InvalidFormat;");
+                    sb.AppendLine($"                {assignExpr} = val;");
+                    sb.AppendLine("                return XlsxCellStatus.Success;");
+                    sb.AppendLine("            }");
+                    continue;
+               }
 
                if (p.Kind == SupportedPropertyKind.String)
                {
@@ -232,7 +322,7 @@ internal static class XlsxCodeEmitter
                          sb.AppendLine($"                if ({string.Join(" && ", checks)}) return XlsxCellStatus.ValueNotAllowed;");
                     }
 
-                    sb.AppendLine($"                instance.{p.Name} = strVal;");
+                    sb.AppendLine($"                {assignExpr} = strVal;");
                     sb.AppendLine("                return XlsxCellStatus.Success;");
                }
                else if (p.Kind is SupportedPropertyKind.StringArray or SupportedPropertyKind.StringList)
@@ -247,9 +337,9 @@ internal static class XlsxCodeEmitter
                     sb.AppendLine($"                var items = XlsxPrimitiveParser.SplitStringList(rawValue, '{EscapeChar(sep)}', {trimBool}, {remEmptyBool});");
 
                     if (p.Kind == SupportedPropertyKind.StringArray)
-                         sb.AppendLine($"                instance.{p.Name} = items;");
+                         sb.AppendLine($"                {assignExpr} = items;");
                     else
-                         sb.AppendLine($"                instance.{p.Name} = new List<string>(items);");
+                         sb.AppendLine($"                {assignExpr} = new List<string>(items);");
 
                     sb.AppendLine("                return XlsxCellStatus.Success;");
                }
@@ -258,7 +348,7 @@ internal static class XlsxCodeEmitter
                     string trueArr = FormatStringArrayLiteral(p.BoolTrueValues, "options.DefaultTrueValues");
                     string falseArr = FormatStringArrayLiteral(p.BoolFalseValues, "options.DefaultFalseValues");
                     sb.AppendLine($"                var status = XlsxPrimitiveParser.TryParseBoolean(rawValue, {trueArr}, {falseArr}, out bool val);");
-                    sb.AppendLine($"                if (status == XlsxCellStatus.Success) instance.{p.Name} = val;");
+                    sb.AppendLine($"                if (status == XlsxCellStatus.Success) {assignExpr} = val;");
                     sb.AppendLine("                return status;");
                }
                else if (p.Kind == SupportedPropertyKind.Enum)
@@ -275,7 +365,7 @@ internal static class XlsxCodeEmitter
                     foreach (var m in p.EnumMembers)
                     {
                          sb.AppendLine($"                if (rawValue.Equals(\"{EscapeString(m.MemberName)}\", StringComparison.OrdinalIgnoreCase) || rawValue.Equals(\"{EscapeString(m.Label)}\", StringComparison.OrdinalIgnoreCase) || rawValue.Equals(\"{m.NumericValue.ToString(CultureInfo.InvariantCulture)}\", StringComparison.Ordinal))");
-                         sb.AppendLine($"                {{ instance.{p.Name} = {p.UnderlyingTypeFullName}.{m.MemberName}; return XlsxCellStatus.Success; }}");
+                         sb.AppendLine($"                {{ {assignExpr} = {p.UnderlyingTypeFullName}.{m.MemberName}; return XlsxCellStatus.Success; }}");
                     }
                     sb.AppendLine("                return XlsxCellStatus.InvalidFormat;");
                }
@@ -292,8 +382,8 @@ internal static class XlsxCodeEmitter
                          SupportedPropertyKind.Double => $"XlsxPrimitiveParser.TryParseDoubleFlexible(rawValue, isNumericCell, {sepExpr}, options.Culture, out double val)",
                          SupportedPropertyKind.Decimal => $"XlsxPrimitiveParser.TryParseDecimalFlexible(rawValue, isNumericCell, {sepExpr}, options.Culture, out decimal val)",
                          SupportedPropertyKind.DateTime => p.Format is not null
-                              ? $"XlsxPrimitiveParser.TryParseDateTimeExact(rawValue, isNumericCell, \"{EscapeString(p.Format)}\", options.Culture, out DateTime val, options.Use1904DateSystem)"
-                              : "XlsxPrimitiveParser.TryParseDateTime(rawValue, isNumericCell, options.Culture, out DateTime val, options.Use1904DateSystem)",
+                             ? $"XlsxPrimitiveParser.TryParseDateTimeExact(rawValue, isNumericCell, \"{EscapeString(p.Format)}\", options.Culture, out DateTime val, options.Use1904DateSystem)"
+                             : "XlsxPrimitiveParser.TryParseDateTime(rawValue, isNumericCell, options.Culture, out DateTime val, options.Use1904DateSystem)",
                          SupportedPropertyKind.DateOnly => p.Format is not null
                              ? $"XlsxPrimitiveParser.TryParseDateOnlyExact(rawValue, isNumericCell, \"{EscapeString(p.Format)}\", options.Culture, out DateOnly val, options.Use1904DateSystem)"
                              : "XlsxPrimitiveParser.TryParseDateOnly(rawValue, isNumericCell, options.Culture, out DateOnly val, options.Use1904DateSystem)",
@@ -320,7 +410,7 @@ internal static class XlsxCodeEmitter
                          }
                     }
 
-                    sb.AppendLine($"                instance.{p.Name} = val;");
+                    sb.AppendLine($"                {assignExpr} = val;");
                     sb.AppendLine("                return XlsxCellStatus.Success;");
                }
 
@@ -334,7 +424,12 @@ internal static class XlsxCodeEmitter
           sb.AppendLine();
      }
 
-     private static void EmitValidateRow(StringBuilder sb, TypeModel model, List<string?> conditionTypes, bool withContext)
+     private static void EmitValidateRow(
+         StringBuilder sb,
+         TypeModel model,
+         List<string?> conditionTypes,
+         List<string?> converterTypes,
+         bool withContext)
      {
           string sig = withContext
               ? $"    public bool ValidateRow(ref {model.FullTypeName} instance, in {model.ContextTypeFullName} context, int rowNumber, ReadOnlySpan<int> propertyToExcelColIndex, ReadOnlySpan<string?> excelHeaders, XlsxReadOptions<{model.FullTypeName}, {model.ContextTypeFullName}> options)"
@@ -344,6 +439,65 @@ internal static class XlsxCodeEmitter
           sb.AppendLine("    {");
           sb.AppendLine("        bool isValid = true;");
 
+          if (model.HasInitOrRowConverters)
+          {
+               sb.AppendLine("        var buf = GetBuffer();");
+               EmitInstanceConstructionFromBuffer(sb, model, "instance");
+
+               // Passe d'évaluation des IXlsxRowConverter (qui reçoivent la ligne déjà peuplée)
+               bool hasRowConverters = model.Properties.Any(p => p.ConverterKind is ConverterKind.RowAware or ConverterKind.RowAndContext);
+               if (hasRowConverters)
+               {
+                    for (int i = 0; i < model.Properties.Length; i++)
+                    {
+                         var p = model.Properties[i];
+                         if (p.ConverterKind == ConverterKind.None || p.ConverterKind == ConverterKind.Simple)
+                              continue;
+
+                         if (p.ConverterKind == ConverterKind.RowAndContext && !withContext)
+                              continue;
+
+                         int convIdx = converterTypes.IndexOf(p.ConverterTypeFullName);
+                         string rawExpr = $"(buf.HasRaw_{i} ? buf.Raw_{i}.AsSpan() : ReadOnlySpan<char>.Empty)";
+                         string tryReadCall = p.ConverterKind == ConverterKind.RowAndContext
+                             ? $"_conv{convIdx}.TryRead({rawExpr}, in instance, in context, options, out {p.TypeFullName} convVal_{i})"
+                             : $"_conv{convIdx}.TryRead({rawExpr}, in instance, options, out {p.TypeFullName} convVal_{i})";
+
+                         sb.AppendLine($"        if ({tryReadCall})");
+                         sb.AppendLine("        {");
+                         sb.AppendLine($"            buf.Val_{i} = convVal_{i};");
+                         sb.AppendLine("        }");
+                         sb.AppendLine("        else");
+                         sb.AppendLine("        {");
+                         sb.AppendLine("            isValid = false;");
+                         sb.AppendLine($"            int excelCol = propertyToExcelColIndex[{i}];");
+                         sb.AppendLine($"            string? colHeader = (excelCol >= 0 && excelCol < excelHeaders.Length) ? excelHeaders[excelCol] : \"{EscapeString(p.HeaderName)}\";");
+                         sb.AppendLine($"            var err = new XlsxErrorContext(rowNumber, excelCol, string.Empty, colHeader, buf.Raw_{i} ?? string.Empty, XlsxCellStatus.InvalidFormat);");
+                         sb.AppendLine("            options.OnError?.Invoke(in err);");
+                         sb.AppendLine("            if (options.ErrorMode == XlsxErrorMode.StopOnFirstError) return false;");
+                         sb.AppendLine("        }");
+                    }
+
+                    // Reconstruction finale si la propriété convertie est init-only ou paramètre de constructeur
+                    if (model.Properties.Any(p => p.ConverterKind is ConverterKind.RowAware or ConverterKind.RowAndContext && p.IsInitOnly))
+                    {
+                         EmitInstanceConstructionFromBuffer(sb, model, "instance");
+                    }
+                    else
+                    {
+                         for (int i = 0; i < model.Properties.Length; i++)
+                         {
+                              var p = model.Properties[i];
+                              if (p.ConverterKind is ConverterKind.RowAware or ConverterKind.RowAndContext && !p.IsInitOnly)
+                              {
+                                   sb.AppendLine($"        instance.{p.Name} = buf.Val_{i};");
+                              }
+                         }
+                    }
+               }
+          }
+
+          // Validations [XlsxIgnoreIf], [XlsxRequired], [XlsxRequiredIf]
           for (int i = 0; i < model.Properties.Length; i++)
           {
                var p = model.Properties[i];
@@ -363,7 +517,8 @@ internal static class XlsxCodeEmitter
 
                          sb.AppendLine($"        if ({evalCall})");
                          sb.AppendLine("        {");
-                         sb.AppendLine($"            instance.{p.Name} = default!;");
+                         if (!p.IsInitOnly)
+                              sb.AppendLine($"            instance.{p.Name} = default!;");
                          sb.AppendLine("        }");
                          sb.AppendLine("        else");
                          sb.AppendLine("        {");
@@ -380,6 +535,48 @@ internal static class XlsxCodeEmitter
           sb.AppendLine("        return isValid;");
           sb.AppendLine("    }");
           sb.AppendLine();
+     }
+
+     private static void EmitInstanceConstructionFromBuffer(StringBuilder sb, TypeModel model, string targetVar)
+     {
+          var ctorArgs = new List<string>();
+          if (model.UsesParameterizedConstructor)
+          {
+               foreach (var cp in model.ConstructorParameters)
+               {
+                    if (cp.MappedPropertyIndex >= 0)
+                         ctorArgs.Add($"buf.Val_{cp.MappedPropertyIndex}");
+                    else
+                         ctorArgs.Add(cp.DefaultValueLiteral ?? "default!");
+               }
+          }
+
+          var initAssignments = new List<string>();
+          for (int i = 0; i < model.Properties.Length; i++)
+          {
+               var p = model.Properties[i];
+               if (p.ConstructorParamIndex < 0)
+               {
+                    initAssignments.Add($"{p.Name} = buf.Val_{i}");
+               }
+          }
+
+          string argsStr = string.Join(", ", ctorArgs);
+          if (initAssignments.Count > 0)
+          {
+               sb.AppendLine($"        {targetVar} = new {model.FullTypeName}({argsStr})");
+               sb.AppendLine("        {");
+               for (int k = 0; k < initAssignments.Count; k++)
+               {
+                    string comma = k < initAssignments.Count - 1 ? "," : string.Empty;
+                    sb.AppendLine($"            {initAssignments[k]}{comma}");
+               }
+               sb.AppendLine("        };");
+          }
+          else
+          {
+               sb.AppendLine($"        {targetVar} = new {model.FullTypeName}({argsStr});");
+          }
      }
 
      private static void EmitRequiredCheck(StringBuilder sb, PropertyModel p, int propIndex, List<string?> conditionTypes, bool withContext, string indent)
@@ -424,7 +621,12 @@ internal static class XlsxCodeEmitter
           sb.AppendLine($"{indent}}}");
      }
 
-     private static void EmitTryFormatCellValue(StringBuilder sb, TypeModel model, List<string?> conditionTypes, bool withContext)
+     private static void EmitTryFormatCellValue(
+         StringBuilder sb,
+         TypeModel model,
+         List<string?> conditionTypes,
+         List<string?> converterTypes,
+         bool withContext)
      {
           string sig = withContext
               ? $"    public bool TryFormatCellValue(in {model.FullTypeName} instance, in {model.ContextTypeFullName} context, int propertyIndex, int rowNumber, Span<char> destination, out int charsWritten, out string? stringValue, out XlsxCellWriteKind writeKind, XlsxWriteOptions<{model.FullTypeName}, {model.ContextTypeFullName}> options)"
@@ -463,10 +665,28 @@ internal static class XlsxCodeEmitter
                     continue;
                }
 
-               if (p.HasDefaultValue && p.DefaultApplyOnExport && (p.IsNullable || p.Kind is SupportedPropertyKind.String or SupportedPropertyKind.StringArray or SupportedPropertyKind.StringList))
+               // Convertisseur personnalisé à l'export
+               if (p.ConverterKind != ConverterKind.None)
                {
-                    string defLit = FormatDefaultValueLiteral(p);
-                    sb.AppendLine($"                var effectiveVal = instance.{p.Name} ?? {defLit};");
+                    int convIdx = converterTypes.IndexOf(p.ConverterTypeFullName);
+                    sb.AppendLine($"                var convPropVal = instance.{p.Name};");
+                    string writeCall = p.ConverterKind switch
+                    {
+                         ConverterKind.Simple => $"_conv{convIdx}.Write(in convPropVal, options)",
+                         ConverterKind.RowAware => $"_conv{convIdx}.Write(in convPropVal, in instance, options)",
+                         ConverterKind.RowAndContext when withContext => $"_conv{convIdx}.Write(in convPropVal, in instance, in context, options)",
+                         _ => "null"
+                    };
+
+                    sb.AppendLine($"                string? convOut = {writeCall};");
+                    sb.AppendLine("                if (convOut is null) return false;");
+                    sb.AppendLine("                stringValue = options.SecurityPolicy == XlsxSecurityPolicy.Sanitize");
+                    sb.AppendLine("                    ? XlsxSecuritySanitizer.SanitizeForExport(convOut, isExplicitFormula: false)");
+                    sb.AppendLine("                    : convOut;");
+                    sb.AppendLine("                writeKind = XlsxCellWriteKind.InlineString;");
+                    sb.AppendLine("                return true;");
+                    sb.AppendLine("            }");
+                    continue;
                }
 
                if (p.HasDefaultValue && p.DefaultApplyOnExport && (p.IsNullable || p.Kind == SupportedPropertyKind.String))
@@ -485,7 +705,7 @@ internal static class XlsxCodeEmitter
                switch (p.Kind)
                {
                     case SupportedPropertyKind.String:
-                         sb.AppendLine($"                string outStr = propVal;");
+                         sb.AppendLine("                string outStr = propVal;");
                          if (p.TrimMode != 0 || p.TextCase != 0)
                               sb.AppendLine($"                outStr = XlsxSecuritySanitizer.TransformText(outStr, (XlsxTrimMode){p.TrimMode}, (XlsxTextCase){p.TextCase});");
                          sb.AppendLine("                stringValue = options.SecurityPolicy == XlsxSecurityPolicy.Sanitize");
@@ -517,9 +737,7 @@ internal static class XlsxCodeEmitter
                               if (p.DecimalSeparator.HasValue)
                               {
                                    if (p.DecimalSeparator.Value != '.')
-                                   {
                                         sb.AppendLine($"                formattedNum = formattedNum.Replace('.', '{EscapeChar(p.DecimalSeparator.Value)}');");
-                                   }
                               }
                               else
                               {
@@ -660,7 +878,7 @@ internal static class XlsxCodeEmitter
           sb.AppendLine("    }");
      }
 
-     private static string FormatDefaultValueLiteral(PropertyModel p)
+    private static string FormatDefaultValueLiteral(PropertyModel p)
      {
           if (p.DefaultKind != 0)
           {

@@ -1,8 +1,11 @@
 ﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -38,6 +41,7 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
      private const string FormatAttrName = "FlashXlsx.Abstractions.XlsxFormatAttribute";
      private const string ColumnLetterAttrName = "FlashXlsx.Abstractions.XlsxColumnLetterAttribute";
      private const string SplitAttrName = "FlashXlsx.Abstractions.XlsxSplitAttribute";
+     private const string ConverterAttrName = "FlashXlsx.Abstractions.XlsxConverterAttribute";
 
      private static readonly DiagnosticDescriptor EmptyBooleanArraysError = new(
          id: "FX001",
@@ -87,6 +91,22 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
          DiagnosticSeverity.Error,
          isEnabledByDefault: true);
 
+     private static readonly DiagnosticDescriptor MissingConstructorMappingError = new(
+         id: "FX007",
+         title: "Constructeur non mappable",
+         messageFormat: "Le paramètre '{0}' du constructeur de '{1}' ne correspond à aucune propriété mappée et n'a pas de valeur par défaut",
+         category: "FlashXlsx",
+         DiagnosticSeverity.Error,
+         isEnabledByDefault: true);
+
+     private static readonly DiagnosticDescriptor InvalidConverterTypeError = new(
+         id: "FX008",
+         title: "Convertisseur personnalisé invalide",
+         messageFormat: "Le type '{0}' sur la propriété '{1}' doit avoir un constructeur sans paramètre et implémenter IXlsxConverter<{2}>, IXlsxRowConverter<{3}, {2}> ou IXlsxRowConverter<{3}, TContext, {2}>",
+         category: "FlashXlsx",
+         DiagnosticSeverity.Error,
+         isEnabledByDefault: true);
+
      public void Initialize(IncrementalGeneratorInitializationContext context)
      {
           var typeDeclarations = context.SyntaxProvider.ForAttributeWithMetadataName(
@@ -131,7 +151,27 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
 
           string fullTypeName = typeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
           string ns = typeSymbol.ContainingNamespace.IsGlobalNamespace ? string.Empty : typeSymbol.ContainingNamespace.ToDisplayString();
-          bool hasParameterlessCtor = typeSymbol.IsValueType || typeSymbol.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public);
+
+          var publicCtors = typeSymbol.InstanceConstructors
+              .Where(c => c.DeclaredAccessibility == Accessibility.Public && !IsCopyConstructor(c, typeSymbol))
+              .ToList();
+
+          bool hasParameterlessCtor = typeSymbol.IsValueType || publicCtors.Any(c => c.Parameters.Length == 0);
+          IMethodSymbol? chosenParameterizedCtor = null;
+
+          if (!hasParameterlessCtor && publicCtors.Count > 0)
+          {
+               chosenParameterizedCtor = publicCtors
+                   .OrderByDescending(c => c.Parameters.Length)
+                   .First();
+          }
+
+          var ctorParamNames = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+          if (chosenParameterizedCtor is not null)
+          {
+               for (int pIdx = 0; pIdx < chosenParameterizedCtor.Parameters.Length; pIdx++)
+                    ctorParamNames[chosenParameterizedCtor.Parameters[pIdx].Name] = pIdx;
+          }
 
           var rawProps = ImmutableArray.CreateBuilder<(PropertyModel Prop, int DeclarationIndex)>();
           string? detectedContextType = null;
@@ -139,15 +179,25 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
 
           foreach (var member in typeSymbol.GetMembers().OfType<IPropertySymbol>())
           {
-               if (member.IsStatic || member.IsIndexer || member.GetMethod is null || member.SetMethod is null)
+               if (member.IsStatic || member.IsIndexer || member.GetMethod is null)
                     continue;
 
                var attrs = member.GetAttributes();
                if (attrs.Any(a => a.AttributeClass?.ToDisplayString() == IgnoreAttrName))
                     continue;
 
+               bool isMappedToCtor = ctorParamNames.TryGetValue(member.Name, out int ctorParamIdx);
+               if (!isMappedToCtor)
+                    ctorParamIdx = -1;
+
+               bool isInitOnly = member.SetMethod is null || member.SetMethod.IsInitOnly;
+
+               // Si ni setter ni paramètre de constructeur, on ignore (ex: propriété calculée { get => ... })
+               if (member.SetMethod is null && !isMappedToCtor)
+                    continue;
+
                string headerName = member.Name;
-               bool isRequired = false;
+               bool isRequired = member.IsRequired;
                string? reqIfType = null;
                bool reqIfCtx = false;
                string? ignIfType = null;
@@ -180,6 +230,9 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
                bool splitTrimEntries = true;
                bool splitRemoveEmptyEntries = true;
 
+               string? converterTypeFullName = null;
+               ConverterKind converterKind = ConverterKind.None;
+
                foreach (var attr in attrs)
                {
                     string? attrFullName = attr.AttributeClass?.ToDisplayString();
@@ -206,6 +259,15 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
                          {
                               ignIfType = condFullName;
                               ignIfCtx = ctxType is not null;
+                              detectedContextType ??= ctxType;
+                         }
+                    }
+                    else if (attrFullName == ConverterAttrName && attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is INamedTypeSymbol convSym)
+                    {
+                         if (ValidateConverterSymbol(convSym, typeSymbol, member, diagnostics, out string convFull, out ConverterKind cKind, out string? ctxType))
+                         {
+                              converterTypeFullName = convFull;
+                              converterKind = cKind;
                               detectedContextType ??= ctxType;
                          }
                     }
@@ -341,7 +403,7 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
                     diagnostics.Add(Diagnostic.Create(InvalidRangeBoundsError, member.Locations.FirstOrDefault(), minLength.Value, maxLength.Value, member.Name));
 
                var (kind, isNullable, underlyingType, enumMembers) = ClassifyPropertyType(member.Type);
-               if (kind == SupportedPropertyKind.Unsupported)
+               if (kind == SupportedPropertyKind.Unsupported && converterKind == ConverterKind.None)
                {
                     diagnostics.Add(Diagnostic.Create(UnsupportedPropertyTypeError, member.Locations.FirstOrDefault(), member.Type.ToDisplayString(), member.Name));
                     continue;
@@ -390,7 +452,11 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
                    FixedColumnIndex: fixedColumnIndex,
                    SplitSeparator: splitSeparator,
                    SplitTrimEntries: splitTrimEntries,
-                   SplitRemoveEmptyEntries: splitRemoveEmptyEntries);
+                   SplitRemoveEmptyEntries: splitRemoveEmptyEntries,
+                   IsInitOnly: isInitOnly,
+                   ConstructorParamIndex: ctorParamIdx,
+                   ConverterTypeFullName: converterTypeFullName,
+                   ConverterKind: converterKind);
 
                rawProps.Add((propModel, declarationIndex++));
           }
@@ -401,6 +467,44 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
               .Select(x => x.Prop)
               .ToImmutableArray();
 
+          // Construction des paramètres du constructeur si utilisé
+          var ctorParamsBuilder = ImmutableArray.CreateBuilder<ConstructorParamModel>();
+          if (chosenParameterizedCtor is not null)
+          {
+               foreach (var param in chosenParameterizedCtor.Parameters)
+               {
+                    int mappedPropIdx = -1;
+                    for (int i = 0; i < orderedProps.Length; i++)
+                    {
+                         if (string.Equals(orderedProps[i].Name, param.Name, StringComparison.OrdinalIgnoreCase))
+                         {
+                              mappedPropIdx = i;
+                              break;
+                         }
+                    }
+
+                    if (mappedPropIdx < 0 && !param.HasExplicitDefaultValue)
+                    {
+                         diagnostics.Add(Diagnostic.Create(MissingConstructorMappingError, typeSymbol.Locations.FirstOrDefault(), param.Name, typeSymbol.Name));
+                    }
+
+                    string? defLiteral = param.HasExplicitDefaultValue
+                        ? FormatCSharpConstant(param.ExplicitDefaultValue, param.Type)
+                        : null;
+
+                    ctorParamsBuilder.Add(new ConstructorParamModel(
+                        ParameterName: param.Name,
+                        TypeFullName: param.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
+                        MappedPropertyIndex: mappedPropIdx,
+                        HasDefaultValue: param.HasExplicitDefaultValue,
+                        DefaultValueLiteral: defLiteral));
+               }
+          }
+
+          bool usesParamCtor = chosenParameterizedCtor is not null;
+          bool hasInitOrRowConverters = usesParamCtor
+              || orderedProps.Any(p => p.IsInitOnly || p.ConverterKind is ConverterKind.RowAware or ConverterKind.RowAndContext);
+
           var model = new TypeModel(
               Namespace: ns,
               TypeName: typeSymbol.Name,
@@ -408,9 +512,33 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
               IsValueType: typeSymbol.IsValueType,
               HasParameterlessConstructor: hasParameterlessCtor,
               ContextTypeFullName: detectedContextType,
-              Properties: orderedProps);
+              Properties: orderedProps,
+              UsesParameterizedConstructor: usesParamCtor,
+              ConstructorParameters: ctorParamsBuilder.ToImmutable(),
+              HasInitOrRowConverters: hasInitOrRowConverters);
 
           return new GenerationResult(model, diagnostics.ToImmutable());
+     }
+
+     private static bool IsCopyConstructor(IMethodSymbol ctor, INamedTypeSymbol typeSymbol)
+     {
+          return typeSymbol.IsRecord
+              && ctor.Parameters.Length == 1
+              && SymbolEqualityComparer.Default.Equals(ctor.Parameters[0].Type, typeSymbol);
+     }
+
+     private static string FormatCSharpConstant(object? val, ITypeSymbol type)
+     {
+          if (val is null) return "default!";
+          if (val is string s) return $"\"{s.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
+          if (val is bool b) return b ? "true" : "false";
+          if (val is char c) return $"'{c}'";
+          if (type.TypeKind == TypeKind.Enum) return $"({type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){Convert.ToInt64(val)}";
+          if (val is decimal m) return $"{m.ToString(CultureInfo.InvariantCulture)}m";
+          if (val is double d) return $"{d.ToString("R", CultureInfo.InvariantCulture)}d";
+          if (val is float f) return $"{f.ToString("R", CultureInfo.InvariantCulture)}f";
+          if (val is long l) return $"{l.ToString(CultureInfo.InvariantCulture)}L";
+          return Convert.ToString(val, CultureInfo.InvariantCulture) ?? "default!";
      }
 
      private static int ParseExcelColumnLetters(string letters)
@@ -462,6 +590,58 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
           }
 
           diagnostics.Add(Diagnostic.Create(InvalidConditionTypeError, prop.Locations.FirstOrDefault(), condSymbol.Name, prop.Name, targetType.Name));
+          return false;
+     }
+
+     private static bool ValidateConverterSymbol(
+         INamedTypeSymbol convSymbol,
+         INamedTypeSymbol targetType,
+         IPropertySymbol prop,
+         ImmutableArray<Diagnostic>.Builder diagnostics,
+         out string convFullName,
+         out ConverterKind kind,
+         out string? contextTypeFullName)
+     {
+          convFullName = convSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+          kind = ConverterKind.None;
+          contextTypeFullName = null;
+
+          bool hasDefaultCtor = convSymbol.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public);
+          if (!hasDefaultCtor)
+          {
+               diagnostics.Add(Diagnostic.Create(InvalidConverterTypeError, prop.Locations.FirstOrDefault(), convSymbol.Name, prop.Name, prop.Type.Name, targetType.Name));
+               return false;
+          }
+
+          foreach (var iface in convSymbol.AllInterfaces)
+          {
+               string ifaceName = iface.OriginalDefinition.ToDisplayString();
+               if (ifaceName == "FlashXlsx.Abstractions.IXlsxConverter<TProperty>" &&
+                   SymbolEqualityComparer.Default.Equals(iface.TypeArguments[0], prop.Type))
+               {
+                    kind = ConverterKind.Simple;
+                    return true;
+               }
+
+               if (ifaceName == "FlashXlsx.Abstractions.IXlsxRowConverter<TRow, TProperty>" &&
+                   SymbolEqualityComparer.Default.Equals(iface.TypeArguments[0], targetType) &&
+                   SymbolEqualityComparer.Default.Equals(iface.TypeArguments[1], prop.Type))
+               {
+                    kind = ConverterKind.RowAware;
+                    return true;
+               }
+
+               if (ifaceName == "FlashXlsx.Abstractions.IXlsxRowConverter<TRow, TContext, TProperty>" &&
+                   SymbolEqualityComparer.Default.Equals(iface.TypeArguments[0], targetType) &&
+                   SymbolEqualityComparer.Default.Equals(iface.TypeArguments[2], prop.Type))
+               {
+                    kind = ConverterKind.RowAndContext;
+                    contextTypeFullName = iface.TypeArguments[1].ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+                    return true;
+               }
+          }
+
+          diagnostics.Add(Diagnostic.Create(InvalidConverterTypeError, prop.Locations.FirstOrDefault(), convSymbol.Name, prop.Name, prop.Type.Name, targetType.Name));
           return false;
      }
 

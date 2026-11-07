@@ -223,3 +223,13 @@ public sealed class XlsxSplitAttribute(char separator = ';') : Attribute
      public bool TrimEntries { get; set; } = true;
      public bool RemoveEmptyEntries { get; set; } = true;
 }
+
+/// <summary>
+/// Associe un convertisseur personnalisé (IXlsxConverter&lt;TProp&gt;, IXlsxRowConverter&lt;TRow, TProp&gt;
+/// ou IXlsxRowConverter&lt;TRow, TContext, TProp&gt;) à cette propriété.
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public sealed class XlsxConverterAttribute(Type converterType) : Attribute
+{
+     public Type ConverterType => converterType;
+}
