@@ -1,13 +1,9 @@
 ﻿using FlashXlsx.Abstractions;
 using FlashXlsx.Abstractions.Internal;
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using System.Xml;
 
 namespace FlashXlsx.Core;
@@ -66,6 +62,7 @@ internal static class SheetRowReader
           {
                int currentRow = 0;
                bool inRow = false;
+               bool hasNonEmptyCell = false;
                bool isHeaderRow = false;
                T currentInstance = default!;
                bool rowAborted = false;
@@ -81,6 +78,7 @@ internal static class SheetRowReader
                               var rAttr = reader.GetAttribute("r");
                               currentRow = int.TryParse(rAttr, out int r) ? r : currentRow + 1;
                               inRow = true;
+                              hasNonEmptyCell = false;
                               rowAborted = false;
                               isHeaderRow = options.HasHeaderRow && currentRow == options.HeaderRowNumber;
 
@@ -141,6 +139,9 @@ internal static class SheetRowReader
                                    int propIdx = colIndex < excelColToProp.Length ? excelColToProp[colIndex] : -1;
                                    if (propIdx >= 0)
                                    {
+                                        if (!span.IsEmpty)
+                                             hasNonEmptyCell = true;
+
                                         var status = map.TrySetCellValue(ref currentInstance, propIdx, span, isNumeric, options);
                                         if (status != XlsxCellStatus.Success && status != XlsxCellStatus.Empty)
                                         {
@@ -165,6 +166,9 @@ internal static class SheetRowReader
                          inRow = false;
                          if (!isHeaderRow && (!options.HasHeaderRow || currentRow > options.HeaderRowNumber))
                          {
+                              if (options.SkipEmptyRows && !hasNonEmptyCell)
+                                   continue;
+
                               bool isValid = map.ValidateRow(
                                   ref currentInstance,
                                   currentRow,
@@ -231,6 +235,7 @@ internal static class SheetRowReader
           {
                int currentRow = 0;
                bool inRow = false;
+               bool hasNonEmptyCell = false;
                bool isHeaderRow = false;
                T currentInstance = default!;
                TContext context = options.Context;
@@ -246,6 +251,7 @@ internal static class SheetRowReader
                               var rAttr = reader.GetAttribute("r");
                               currentRow = int.TryParse(rAttr, out int r) ? r : currentRow + 1;
                               inRow = true;
+                              hasNonEmptyCell = false;
                               isHeaderRow = options.HasHeaderRow && currentRow == options.HeaderRowNumber;
 
                               if (!isHeaderRow && (!options.HasHeaderRow || currentRow > options.HeaderRowNumber))
@@ -298,6 +304,9 @@ internal static class SheetRowReader
                                    int propIdx = colIndex < excelColToProp.Length ? excelColToProp[colIndex] : -1;
                                    if (propIdx >= 0)
                                    {
+                                        if (!span.IsEmpty)
+                                             hasNonEmptyCell = true;
+
                                         var status = map.TrySetCellValue(ref currentInstance, propIdx, span, isNumeric, options);
                                         if (status != XlsxCellStatus.Success && status != XlsxCellStatus.Empty)
                                         {
@@ -322,6 +331,9 @@ internal static class SheetRowReader
                          inRow = false;
                          if (!isHeaderRow && (!options.HasHeaderRow || currentRow > options.HeaderRowNumber))
                          {
+                              if (options.SkipEmptyRows && !hasNonEmptyCell)
+                                   continue;
+
                               bool isValid = map.ValidateRow(
                                   ref currentInstance,
                                   in context,
@@ -375,6 +387,7 @@ internal static class SheetRowReader
           {
                int currentRow = 0;
                bool inRow = false;
+               bool hasNonEmptyCell = false;
                bool isHeaderRow = false;
                Dictionary<string, XlsxValue>? currentDict = null;
 
@@ -389,6 +402,7 @@ internal static class SheetRowReader
                               var rAttr = reader.GetAttribute("r");
                               currentRow = int.TryParse(rAttr, out int r) ? r : currentRow + 1;
                               inRow = true;
+                              hasNonEmptyCell = false;
                               isHeaderRow = options.HasHeaderRow && currentRow == options.HeaderRowNumber;
 
                               if (!isHeaderRow && (!options.HasHeaderRow || currentRow > options.HeaderRowNumber))
@@ -424,6 +438,9 @@ internal static class SheetRowReader
                               }
                               else if (currentDict is not null)
                               {
+                                   if (!span.IsEmpty)
+                                        hasNonEmptyCell = true;
+
                                    string key = colToKey[colIndex] ?? XlsxCoordinateHelper.GetColumnLetter(colIndex);
                                    currentDict[key] = ParseDynamicValue(span, cellType, isNumeric, options);
                               }
@@ -434,7 +451,8 @@ internal static class SheetRowReader
                          inRow = false;
                          if (currentDict is not null)
                          {
-                              yield return currentDict;
+                              if (!options.SkipEmptyRows || hasNonEmptyCell)
+                                   yield return currentDict;
                               currentDict = null;
                          }
                     }

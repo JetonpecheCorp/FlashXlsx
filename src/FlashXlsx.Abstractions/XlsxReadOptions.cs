@@ -22,6 +22,9 @@ public class XlsxReadOptions
 
      /// <summary>'\0' = auto-détection flexible ('.' et ','), sinon caractère explicite (ex: ',' ou '.').</summary>
      public char DecimalSeparator { get; set; } = '\0';
+
+     /// <summary>Ignore automatiquement les lignes totalement vides (activé par défaut).</summary>
+     public bool SkipEmptyRows { get; set; } = true;
      public CultureInfo Culture { get; set; } = CultureInfo.InvariantCulture;
      public XlsxSecurityPolicy SecurityPolicy { get; set; } = XlsxSecurityPolicy.Sanitize;
 
@@ -43,6 +46,12 @@ public class XlsxReadOptions
      public XlsxReadOptions WithErrorMode(XlsxErrorMode mode) { ErrorMode = mode; return this; }
      public XlsxReadOptions WithErrorHandler(XlsxErrorHandler handler) { OnError = handler; return this; }
      public XlsxReadOptions WithSecurityPolicy(XlsxSecurityPolicy policy) { SecurityPolicy = policy; return this; }
+
+     public XlsxReadOptions WithSkipEmptyRows(bool skip = true)
+     {
+          SkipEmptyRows = skip;
+          return this;
+     }
 
      public XlsxReadOptions WithDefaultBooleanValues(string[]? trueValues = null, string[]? falseValues = null)
      {
@@ -103,6 +112,13 @@ public class XlsxReadOptions<T> : XlsxReadOptions
           base.WithSecurityPolicy(policy);
           return this;
      }
+
+     public new XlsxReadOptions<T> WithSkipEmptyRows(bool skip = true)
+     {
+          base.WithSkipEmptyRows(skip);
+          return this;
+     }
+
      /// <summary>
      /// Associe une propriété du modèle à un ou plusieurs noms d'en-tête Excel sans réflexion.
      /// </summary>
@@ -161,6 +177,13 @@ public sealed class XlsxReadOptions<T, TContext> : XlsxReadOptions<T>
      public new XlsxReadOptions<T, TContext> WithDefaultBooleanValues(string[]? trueValues = null, string[]? falseValues = null) { base.WithDefaultBooleanValues(trueValues, falseValues); return this; }
      public new XlsxReadOptions<T, TContext> WithTranslations(IReadOnlyDictionary<string, string> translations) { base.WithTranslations(translations); return this; }
      public new XlsxReadOptions<T, TContext> WithDecimalSeparator(char separator) { base.WithDecimalSeparator(separator); return this; }
+
+     public new XlsxReadOptions<T, TContext> WithSkipEmptyRows(bool skip = true)
+     {
+          base.WithSkipEmptyRows(skip);
+          return this;
+     }
+
      public new XlsxReadOptions<T, TContext> WithSecurityPolicy(XlsxSecurityPolicy policy)
      {
           base.WithSecurityPolicy(policy);
