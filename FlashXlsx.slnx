@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FlashXlsx.Abstractions/FlashXlsx.Abstractions.csproj" />
+    <Project Path="src/FlashXlsx.Generators/FlashXlsx.Generators.csproj" />
+    <Project Path="src/FlashXlsx/FlashXlsx.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FlashXlsx.Tests/FlashXlsx.Tests.csproj" />
+  </Folder>
+</Solution>

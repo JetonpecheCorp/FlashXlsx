@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsAotCompatible>true</IsAotCompatible>
+
+    <PackageId>FlashXlsx</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Nicolas</Authors>
+    <Description>Sérialiseur et désérialiseur XLSX haute performance en streaming, 100% compatible Native AOT grâce à un Source Generator Roslyn.</Description>
+    <PackageTags>xlsx;excel;aot;source-generator;streaming;openxml</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\FlashXlsx.Abstractions\FlashXlsx.Abstractions.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\FlashXlsx.Generators\FlashXlsx.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\FlashXlsx.Abstractions\bin\$(Configuration)\net10.0\FlashXlsx.Abstractions.dll"
+          Pack="true" PackagePath="lib/net10.0" Visible="false" />
+    <None Include="..\FlashXlsx.Generators\bin\$(Configuration)\netstandard2.0\FlashXlsx.Generators.dll"
+          Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+  </ItemGroup>
+
+</Project>
