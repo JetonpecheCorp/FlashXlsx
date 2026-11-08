@@ -1,15 +1,10 @@
 ﻿using FlashXlsx.Abstractions;
 using FlashXlsx.Abstractions.Internal;
-using System;
 using System.Buffers;
 using System.Buffers.Text;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Text;
-using System.Threading;
 
 namespace FlashXlsx.Core;
 
@@ -17,6 +12,8 @@ internal static class Utf8SheetRowReader
 {
      public static bool CanUseFastUtf8Path(XlsxReadOptions options)
          => !options.FillMergedCells;
+
+     private static readonly SearchValues<byte> s_tagDelimiters = SearchValues.Create("<>"u8);
 
      public static async IAsyncEnumerable<T> ReadTypedFastAsync<T>(
          ZipArchiveEntry entry,
@@ -958,11 +955,11 @@ internal static class Utf8SheetRowReader
      }
 
      private static ReadOnlySpan<char> DecodeCellValueToSpan(
-         ReadOnlySpan<byte> cellInner,
-         byte cellTypeCode,
-         string[] sharedStrings,
-         ref char[] charScratch,
-         out string? cachedString)
+             ReadOnlySpan<byte> cellInner,
+             byte cellTypeCode,
+             string[] sharedStrings,
+             ref char[] charScratch,
+             out string? cachedString)
      {
           cachedString = null;
 
@@ -993,7 +990,7 @@ internal static class Utf8SheetRowReader
                     if (utf8Text.IndexOf((byte)'&') >= 0)
                          hasEntities = true;
 
-                    int maxChars = Encoding.UTF8.GetMaxCharCount(utf8Text.Length);
+                    int maxChars = utf8Text.Length;
                     if (totalChars + maxChars > charScratch.Length)
                     {
                          char[] larger = ArrayPool<char>.Shared.Rent((totalChars + maxChars) * 2);
@@ -1002,7 +999,15 @@ internal static class Utf8SheetRowReader
                          charScratch = larger;
                     }
 
-                    totalChars += Encoding.UTF8.GetChars(utf8Text, charScratch.AsSpan(totalChars));
+                    // Voie rapide SIMD ASCII (32 octets/cycle), repli UTF-8 si caractères accentués
+                    if (Ascii.ToUtf16(utf8Text, charScratch.AsSpan(totalChars), out int asciiWritten) == OperationStatus.Done)
+                    {
+                         totalChars += asciiWritten;
+                    }
+                    else
+                    {
+                         totalChars += Encoding.UTF8.GetChars(utf8Text, charScratch.AsSpan(totalChars));
+                    }
                }
 
                if (totalChars == 0)
@@ -1039,14 +1044,17 @@ internal static class Utf8SheetRowReader
                return ReadOnlySpan<char>.Empty;
           }
 
-          int needed = Encoding.UTF8.GetMaxCharCount(vUtf8.Length);
-          if (needed > charScratch.Length)
+          if (vUtf8.Length > charScratch.Length)
           {
                ArrayPool<char>.Shared.Return(charScratch);
-               charScratch = ArrayPool<char>.Shared.Rent(needed * 2);
+               charScratch = ArrayPool<char>.Shared.Rent(vUtf8.Length * 2);
           }
-          int charLen = Encoding.UTF8.GetChars(vUtf8, charScratch);
-          return charScratch.AsSpan(0, charLen);
+
+          if (Ascii.ToUtf16(vUtf8, charScratch, out int written) == OperationStatus.Done)
+               return charScratch.AsSpan(0, written);
+
+          int utf8Len = Encoding.UTF8.GetChars(vUtf8, charScratch);
+          return charScratch.AsSpan(0, utf8Len);
      }
 
      private static bool IsHeaderRowUtf8<T>(
