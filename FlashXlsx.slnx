@@ -7,4 +7,5 @@
   <Folder Name="/tests/">
     <Project Path="tests/FlashXlsx.Tests/FlashXlsx.Tests.csproj" />
   </Folder>
+  <Project Path="tests/FlashXlsx.Benchmarks/FlashXlsx.Benchmarks.csproj" Id="963b0b48-f704-4ff6-8775-7e4665d4a683" />
 </Solution>
