@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <PackageReference Include="MiniExcel" Version="1.34.2" />
+    <PackageReference Include="ClosedXML" Version="0.104.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\FlashXlsx.Abstractions\FlashXlsx.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\FlashXlsx\FlashXlsx.csproj" />
+    <ProjectReference Include="..\..\src\FlashXlsx.Generators\FlashXlsx.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>

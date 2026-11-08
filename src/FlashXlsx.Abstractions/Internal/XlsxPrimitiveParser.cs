@@ -16,6 +16,7 @@ public static class XlsxPrimitiveParser
      public static XlsxCellStatus TryParseInt32(ReadOnlySpan<char> span, CultureInfo culture, out int value)
      {
           value = 0;
+          span = StripCurrencyAndSpaces(span);
           if (span.IsEmpty) return XlsxCellStatus.Empty;
           if (int.TryParse(span, NumberStyles.Integer, culture, out value)) return XlsxCellStatus.Success;
           return long.TryParse(span, NumberStyles.Integer, culture, out _) ? XlsxCellStatus.Overflow : XlsxCellStatus.InvalidFormat;
@@ -24,6 +25,7 @@ public static class XlsxPrimitiveParser
      public static XlsxCellStatus TryParseInt64(ReadOnlySpan<char> span, CultureInfo culture, out long value)
      {
           value = 0;
+          span = StripCurrencyAndSpaces(span);
           if (span.IsEmpty) return XlsxCellStatus.Empty;
           return long.TryParse(span, NumberStyles.Integer, culture, out value) ? XlsxCellStatus.Success : XlsxCellStatus.InvalidFormat;
      }
@@ -31,6 +33,7 @@ public static class XlsxPrimitiveParser
      public static XlsxCellStatus TryParseDecimal(ReadOnlySpan<char> span, CultureInfo culture, out decimal value)
      {
           value = 0m;
+          span = StripCurrencyAndSpaces(span);
           if (span.IsEmpty) return XlsxCellStatus.Empty;
           return decimal.TryParse(span, NumberStyles.Number, culture, out value) ? XlsxCellStatus.Success : XlsxCellStatus.InvalidFormat;
      }
@@ -38,16 +41,17 @@ public static class XlsxPrimitiveParser
      public static XlsxCellStatus TryParseDouble(ReadOnlySpan<char> span, CultureInfo culture, out double value)
      {
           value = 0d;
+          span = StripCurrencyAndSpaces(span);
           if (span.IsEmpty) return XlsxCellStatus.Empty;
           return double.TryParse(span, NumberStyles.Float | NumberStyles.AllowThousands, culture, out value) ? XlsxCellStatus.Success : XlsxCellStatus.InvalidFormat;
      }
 
      public static XlsxCellStatus TryParseDateTime(
-                  ReadOnlySpan<char> rawValue,
-                  bool isNumericCell,
-                  CultureInfo culture,
-                  out DateTime result,
-                  bool use1904DateSystem = false)
+         ReadOnlySpan<char> rawValue,
+         bool isNumericCell,
+         CultureInfo culture,
+         out DateTime result,
+         bool use1904DateSystem = false)
      {
           result = default;
           if (rawValue.IsEmpty)
@@ -73,11 +77,11 @@ public static class XlsxPrimitiveParser
      }
 
      public static XlsxCellStatus TryParseDateOnly(
-        ReadOnlySpan<char> rawValue,
-        bool isNumericCell,
-        CultureInfo culture,
-        out DateOnly result,
-        bool use1904DateSystem = false)
+         ReadOnlySpan<char> rawValue,
+         bool isNumericCell,
+         CultureInfo culture,
+         out DateOnly result,
+         bool use1904DateSystem = false)
      {
           result = default;
           if (rawValue.IsEmpty)
@@ -184,7 +188,7 @@ public static class XlsxPrimitiveParser
      }
 
      /// <summary>
-     /// Parse un decimal avec gestion flexible du séparateur ('.', ',', ou auto-détection '\0') sans allocation.
+     /// Parse un decimal avec gestion flexible du séparateur ('.', ',', ou auto-détection '\0') et nettoyage automatique des devises.
      /// </summary>
      public static XlsxCellStatus TryParseDecimalFlexible(
          ReadOnlySpan<char> rawValue,
@@ -201,20 +205,24 @@ public static class XlsxPrimitiveParser
           if (isNumericCell && decimal.TryParse(rawValue, NumberStyles.Float, CultureInfo.InvariantCulture, out result))
                return XlsxCellStatus.Success;
 
-          if (NormalizeDecimalSpan(rawValue, preferredSeparator, stackalloc char[64], out int written, out ReadOnlySpan<char> normalized))
+          ReadOnlySpan<char> cleaned = StripCurrencyAndSpaces(rawValue);
+          if (cleaned.IsEmpty)
+               return XlsxCellStatus.Empty;
+
+          if (NormalizeDecimalSpan(cleaned, preferredSeparator, stackalloc char[64], out int written, out ReadOnlySpan<char> normalized))
           {
                if (decimal.TryParse(normalized.Slice(0, written), NumberStyles.Float, CultureInfo.InvariantCulture, out result))
                     return XlsxCellStatus.Success;
           }
 
-          if (decimal.TryParse(rawValue, NumberStyles.Number, culture, out result))
+          if (decimal.TryParse(cleaned, NumberStyles.Number, culture, out result))
                return XlsxCellStatus.Success;
 
           return XlsxCellStatus.InvalidFormat;
      }
 
      /// <summary>
-     /// Parse un double avec gestion flexible du séparateur ('.', ',', ou auto-détection '\0') sans allocation.
+     /// Parse un double avec gestion flexible du séparateur ('.', ',', ou auto-détection '\0') et nettoyage automatique des devises.
      /// </summary>
      public static XlsxCellStatus TryParseDoubleFlexible(
          ReadOnlySpan<char> rawValue,
@@ -230,16 +238,95 @@ public static class XlsxPrimitiveParser
           if (isNumericCell && double.TryParse(rawValue, NumberStyles.Float, CultureInfo.InvariantCulture, out result))
                return XlsxCellStatus.Success;
 
-          if (NormalizeDecimalSpan(rawValue, preferredSeparator, stackalloc char[64], out int written, out ReadOnlySpan<char> normalized))
+          ReadOnlySpan<char> cleaned = StripCurrencyAndSpaces(rawValue);
+          if (cleaned.IsEmpty)
+               return XlsxCellStatus.Empty;
+
+          if (NormalizeDecimalSpan(cleaned, preferredSeparator, stackalloc char[64], out int written, out ReadOnlySpan<char> normalized))
           {
                if (double.TryParse(normalized.Slice(0, written), NumberStyles.Float, CultureInfo.InvariantCulture, out result))
                     return XlsxCellStatus.Success;
           }
 
-          if (double.TryParse(rawValue, NumberStyles.Number, culture, out result))
+          if (double.TryParse(cleaned, NumberStyles.Number, culture, out result))
                return XlsxCellStatus.Success;
 
           return XlsxCellStatus.InvalidFormat;
+     }
+
+     /// <summary>
+     /// Retire sans allocation les symboles monétaires (€, $, £, ¥, ₹, CHF, EUR, USD, GBP, CAD) et espaces en début/fin.
+     /// </summary>
+     private static ReadOnlySpan<char> StripCurrencyAndSpaces(ReadOnlySpan<char> span)
+     {
+          span = TrimAllSpaces(span);
+          if (span.IsEmpty)
+               return span;
+
+          // Symboles ou codes monétaires en préfixe (ex: "$1,250.50", "CHF 120.00", "EUR 99,90")
+          span = TrimCurrencyPrefix(span);
+          span = TrimAllSpaces(span);
+
+          // Symboles ou codes monétaires en suffixe (ex: "1 250,50 €", "120.00 CHF", "99,90 EUR")
+          span = TrimCurrencySuffix(span);
+          span = TrimAllSpaces(span);
+
+          return span;
+     }
+
+     private static ReadOnlySpan<char> TrimAllSpaces(ReadOnlySpan<char> span)
+     {
+          int start = 0;
+          int end = span.Length - 1;
+          while (start <= end && IsSpaceChar(span[start])) start++;
+          while (end >= start && IsSpaceChar(span[end])) end--;
+          return start > end ? ReadOnlySpan<char>.Empty : span.Slice(start, end - start + 1);
+     }
+
+     private static bool IsSpaceChar(char c) => c == ' ' || c == '\t' || c == '\u00A0' || c == '\u202F';
+
+     private static bool IsCurrencySymbol(char c) => c is '€' or '$' or '£' or '¥' or '₹' or '₩' or '₽';
+
+     private static ReadOnlySpan<char> TrimCurrencyPrefix(ReadOnlySpan<char> span)
+     {
+          if (span.IsEmpty) return span;
+          if (IsCurrencySymbol(span[0]))
+               return span[1..];
+
+          if (span.Length >= 3)
+          {
+               ReadOnlySpan<char> prefix3 = span[..3];
+               if (prefix3.Equals("CHF", StringComparison.OrdinalIgnoreCase) ||
+                   prefix3.Equals("EUR", StringComparison.OrdinalIgnoreCase) ||
+                   prefix3.Equals("USD", StringComparison.OrdinalIgnoreCase) ||
+                   prefix3.Equals("GBP", StringComparison.OrdinalIgnoreCase) ||
+                   prefix3.Equals("CAD", StringComparison.OrdinalIgnoreCase))
+               {
+                    return span[3..];
+               }
+          }
+          return span;
+     }
+
+     private static ReadOnlySpan<char> TrimCurrencySuffix(ReadOnlySpan<char> span)
+     {
+          if (span.IsEmpty) return span;
+          if (IsCurrencySymbol(span[^1]))
+               return span[..^1];
+
+          if (span.Length >= 3)
+          {
+               ReadOnlySpan<char> suffix3 = span[^3..];
+               if (suffix3.Equals("CHF", StringComparison.OrdinalIgnoreCase) ||
+                   suffix3.Equals("EUR", StringComparison.OrdinalIgnoreCase) ||
+                   suffix3.Equals("USD", StringComparison.OrdinalIgnoreCase) ||
+                   suffix3.Equals("GBP", StringComparison.OrdinalIgnoreCase) ||
+                   suffix3.Equals("CAD", StringComparison.OrdinalIgnoreCase))
+               {
+                    return span[..^3];
+               }
+          }
+          return span;
      }
 
      private static bool NormalizeDecimalSpan(
@@ -283,7 +370,7 @@ public static class XlsxPrimitiveParser
                {
                     char c = input[i];
                     // Ignore les espaces classiques, insécables (\u00A0, \u202F) et séparateurs de milliers
-                    if (c == ' ' || c == '\u00A0' || c == '\u202F' || c == thousandsSep)
+                    if (IsSpaceChar(c) || c == thousandsSep)
                          continue;
 
                     dest[written++] = (c == decSep) ? '.' : c;
@@ -307,10 +394,10 @@ public static class XlsxPrimitiveParser
      }
 
      public static XlsxCellStatus TryParseTimeOnly(
-             ReadOnlySpan<char> rawValue,
-             bool isNumericCell,
-             CultureInfo culture,
-             out TimeOnly result)
+         ReadOnlySpan<char> rawValue,
+         bool isNumericCell,
+         CultureInfo culture,
+         out TimeOnly result)
      {
           result = default;
           if (rawValue.IsEmpty)
@@ -338,12 +425,12 @@ public static class XlsxPrimitiveParser
      }
 
      public static XlsxCellStatus TryParseDateTimeExact(
-              ReadOnlySpan<char> rawValue,
-              bool isNumericCell,
-              string format,
-              CultureInfo culture,
-              out DateTime result,
-              bool use1904DateSystem = false)
+         ReadOnlySpan<char> rawValue,
+         bool isNumericCell,
+         string format,
+         CultureInfo culture,
+         out DateTime result,
+         bool use1904DateSystem = false)
      {
           result = default;
           if (rawValue.IsEmpty)
@@ -356,12 +443,12 @@ public static class XlsxPrimitiveParser
      }
 
      public static XlsxCellStatus TryParseDateOnlyExact(
-              ReadOnlySpan<char> rawValue,
-              bool isNumericCell,
-              string format,
-              CultureInfo culture,
-              out DateOnly result,
-              bool use1904DateSystem = false)
+         ReadOnlySpan<char> rawValue,
+         bool isNumericCell,
+         string format,
+         CultureInfo culture,
+         out DateOnly result,
+         bool use1904DateSystem = false)
      {
           result = default;
           if (rawValue.IsEmpty)

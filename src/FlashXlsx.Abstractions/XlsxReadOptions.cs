@@ -19,6 +19,9 @@ public class XlsxReadOptions
      public int HeaderRowNumber { get; set; } = 1;
      public bool TrimStrings { get; set; } = true;
      public bool Use1904DateSystem { get; set; }
+     public int? StartRow { get; set; }
+     public int? MaxRows { get; set; }
+     public bool FillMergedCells { get; set; }
 
      /// <summary>Active la détection automatique de la ligne d'en-tête dans les premières lignes du fichier.</summary>
      public bool AutoDetectHeaderRow { get; set; }
@@ -59,6 +62,23 @@ public class XlsxReadOptions
      public XlsxReadOptions WithErrorHandler(XlsxErrorHandler handler) { OnError = handler; return this; }
      public XlsxReadOptions WithSecurityPolicy(XlsxSecurityPolicy policy) { SecurityPolicy = policy; return this; }
 
+     public XlsxReadOptions WithStartRow(int startRow)
+     {
+          StartRow = startRow > 0 ? startRow : null;
+          return this;
+     }
+
+     public XlsxReadOptions WithMaxRows(int maxRows)
+     {
+          MaxRows = maxRows >= 0 ? maxRows : null;
+          return this;
+     }
+
+     public XlsxReadOptions WithFillMergedCells(bool enable = true)
+     {
+          FillMergedCells = enable;
+          return this;
+     }
      public XlsxReadOptions WithSkipEmptyRows(bool skip = true)
      {
           SkipEmptyRows = skip;
@@ -136,6 +156,24 @@ public class XlsxReadOptions<T> : XlsxReadOptions
      public new XlsxReadOptions<T> WithSecurityPolicy(XlsxSecurityPolicy policy)
      {
           base.WithSecurityPolicy(policy);
+          return this;
+     }
+
+     public new XlsxReadOptions<T> WithStartRow(int startRow)
+     {
+          base.WithStartRow(startRow);
+          return this;
+     }
+
+     public new XlsxReadOptions<T> WithMaxRows(int maxRows)
+     {
+          base.WithMaxRows(maxRows);
+          return this;
+     }
+
+     public new XlsxReadOptions<T> WithFillMergedCells(bool enable = true)
+     {
+          base.WithFillMergedCells(enable);
           return this;
      }
 
@@ -219,6 +257,24 @@ public sealed class XlsxReadOptions<T, TContext> : XlsxReadOptions<T>
      public new XlsxReadOptions<T, TContext> WithSkipEmptyRows(bool skip = true)
      {
           base.WithSkipEmptyRows(skip);
+          return this;
+     }
+
+     public new XlsxReadOptions<T, TContext> WithStartRow(int startRow)
+     {
+          base.WithStartRow(startRow);
+          return this;
+     }
+
+     public new XlsxReadOptions<T, TContext> WithMaxRows(int maxRows)
+     {
+          base.WithMaxRows(maxRows);
+          return this;
+     }
+
+     public new XlsxReadOptions<T, TContext> WithFillMergedCells(bool enable = true)
+     {
+          base.WithFillMergedCells(enable);
           return this;
      }
 

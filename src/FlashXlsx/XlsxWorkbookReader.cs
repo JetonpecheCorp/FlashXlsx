@@ -11,14 +11,29 @@ namespace FlashXlsx;
 /// </summary>
 public sealed class XlsxWorkbookReader : IDisposable
 {
-     private readonly ZipArchive _archive;
+     // Signature binaire standard des conteneurs OLE2 / Compound File Binary (fichiers .xlsx chiffrés par mot de passe)
+     private static ReadOnlySpan<byte> Ole2Signature => [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
+
+     private readonly ZipArchive? _archive;
+     private readonly Stream? _ownedStream;
      private readonly string[] _sharedStrings;
      private readonly bool _use1904DateSystem;
 
+     public bool IsEncrypted { get; }
      public IReadOnlyList<XlsxSheetInfo> Sheets { get; }
 
      public XlsxWorkbookReader(Stream stream, bool leaveOpen = false)
      {
+          if (HasOle2EncryptedSignature(stream))
+          {
+               IsEncrypted = true;
+               Sheets = [];
+               _sharedStrings = [];
+               if (!leaveOpen)
+                    _ownedStream = stream;
+               return;
+          }
+
           try
           {
                _archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen);
@@ -31,9 +46,36 @@ public sealed class XlsxWorkbookReader : IDisposable
           }
      }
 
+     private static bool HasOle2EncryptedSignature(Stream stream)
+     {
+          if (!stream.CanSeek)
+               return false;
+
+          long originalPos = stream.Position;
+          Span<byte> header = stackalloc byte[8];
+          int totalRead = 0;
+
+          while (totalRead < 8)
+          {
+               int read = stream.Read(header[totalRead..]);
+               if (read == 0)
+                    break;
+               totalRead += read;
+          }
+
+          stream.Position = originalPos;
+          return totalRead == 8 && header.SequenceEqual(Ole2Signature);
+     }
+
      public IAsyncEnumerable<T> ReadSheetAsync<T>(string sheetName, XlsxReadOptions<T>? options = null, CancellationToken ct = default)
      {
           options ??= new XlsxReadOptions<T>();
+          if (IsEncrypted)
+          {
+               NotifyEncryptedFile(options);
+               return AsyncEnumerable.Empty<T>();
+          }
+
           var sheet = Sheets.FirstOrDefault(s => string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase));
           if (sheet == default && Sheets.All(s => !string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase)))
           {
@@ -47,6 +89,12 @@ public sealed class XlsxWorkbookReader : IDisposable
      public IAsyncEnumerable<T> ReadSheetAsync<T>(int sheetIndex, XlsxReadOptions<T>? options = null, CancellationToken ct = default)
      {
           options ??= new XlsxReadOptions<T>();
+          if (IsEncrypted)
+          {
+               NotifyEncryptedFile(options);
+               return AsyncEnumerable.Empty<T>();
+          }
+
           if ((uint)sheetIndex >= (uint)Sheets.Count)
           {
                NotifySheetNotFound($"Index:{sheetIndex}", options);
@@ -61,6 +109,12 @@ public sealed class XlsxWorkbookReader : IDisposable
          XlsxReadOptions<T, TContext> options,
          CancellationToken ct = default)
      {
+          if (IsEncrypted)
+          {
+               NotifyEncryptedFile(options);
+               return AsyncEnumerable.Empty<T>();
+          }
+
           var sheet = Sheets.FirstOrDefault(s => string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase));
           if (Sheets.All(s => !string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase)))
           {
@@ -76,6 +130,12 @@ public sealed class XlsxWorkbookReader : IDisposable
          XlsxReadOptions<T, TContext> options,
          CancellationToken ct = default)
      {
+          if (IsEncrypted)
+          {
+               NotifyEncryptedFile(options);
+               return AsyncEnumerable.Empty<T>();
+          }
+
           if ((uint)sheetIndex >= (uint)Sheets.Count)
           {
                NotifySheetNotFound($"Index:{sheetIndex}", options);
@@ -91,6 +151,12 @@ public sealed class XlsxWorkbookReader : IDisposable
          CancellationToken ct = default)
      {
           options ??= new XlsxReadOptions();
+          if (IsEncrypted)
+          {
+               NotifyEncryptedFile(options);
+               return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
+          }
+
           if (_use1904DateSystem)
                options.Use1904DateSystem = true;
 
@@ -101,7 +167,7 @@ public sealed class XlsxWorkbookReader : IDisposable
                return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
           }
 
-          var entry = _archive.GetEntry(sheet.ZipEntryPath);
+          var entry = _archive?.GetEntry(sheet.ZipEntryPath);
           if (entry is null)
                return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
 
@@ -114,6 +180,12 @@ public sealed class XlsxWorkbookReader : IDisposable
          CancellationToken ct = default)
      {
           options ??= new XlsxReadOptions();
+          if (IsEncrypted)
+          {
+               NotifyEncryptedFile(options);
+               return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
+          }
+
           if (_use1904DateSystem)
                options.Use1904DateSystem = true;
 
@@ -123,7 +195,7 @@ public sealed class XlsxWorkbookReader : IDisposable
                return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
           }
 
-          var entry = _archive.GetEntry(Sheets[sheetIndex].ZipEntryPath);
+          var entry = _archive?.GetEntry(Sheets[sheetIndex].ZipEntryPath);
           if (entry is null)
                return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
 
@@ -136,7 +208,7 @@ public sealed class XlsxWorkbookReader : IDisposable
                options.Use1904DateSystem = true;
 
           var map = XlsxTypeRegistry.GetRequiredMap<T>();
-          var entry = _archive.GetEntry(sheet.ZipEntryPath);
+          var entry = _archive?.GetEntry(sheet.ZipEntryPath);
           if (entry is null)
                return AsyncEnumerable.Empty<T>();
 
@@ -152,7 +224,7 @@ public sealed class XlsxWorkbookReader : IDisposable
                options.Use1904DateSystem = true;
 
           var map = XlsxTypeRegistry.GetRequiredContextMap<T, TContext>();
-          var entry = _archive.GetEntry(sheet.ZipEntryPath);
+          var entry = _archive?.GetEntry(sheet.ZipEntryPath);
           if (entry is null)
                return AsyncEnumerable.Empty<T>();
 
@@ -165,5 +237,15 @@ public sealed class XlsxWorkbookReader : IDisposable
           options.OnError?.Invoke(in err);
      }
 
-     public void Dispose() => _archive.Dispose();
+     private static void NotifyEncryptedFile(XlsxReadOptions options)
+     {
+          var err = new XlsxErrorContext(0, -1, string.Empty, null, "Le classeur Excel est protégé par mot de passe (chiffré).", XlsxCellStatus.EncryptedFile);
+          options.OnError?.Invoke(in err);
+     }
+
+     public void Dispose()
+     {
+          _archive?.Dispose();
+          _ownedStream?.Dispose();
+     }
 }

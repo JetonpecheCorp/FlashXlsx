@@ -329,4 +329,21 @@ public static class FlashXlsxSerializer
                await step(writer, ct);
           }
      }
+
+     // =========================================================================
+     // MÉTADONNÉES LÉGÈRES (GetSheets)
+     // =========================================================================
+
+     public static IReadOnlyList<XlsxSheetInfo> GetSheets(Stream stream)
+     {
+          using var reader = new XlsxWorkbookReader(stream, leaveOpen: true);
+          return reader.Sheets;
+     }
+
+     public static IReadOnlyList<XlsxSheetInfo> GetSheets(string filePath)
+     {
+          using var fs = OpenReadStream(filePath, options: null);
+          using var reader = new XlsxWorkbookReader(fs, leaveOpen: false);
+          return reader.Sheets;
+     }
 }

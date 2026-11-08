@@ -28,14 +28,15 @@ public enum XlsxCellStatus : byte
      Overflow,
      ColumnNotFound,
      SheetNotFound,
-     OutOfRange,       // [XlsxRange], [XlsxMin], [XlsxMax]
-     LengthInvalid,    // [XlsxLength], [XlsxMinLength], [XlsxMaxLength]
-     PatternMismatch,  // [XlsxRegex]
-     ValueNotAllowed,  // [XlsxAllowedValues]
+     OutOfRange,        // [XlsxRange], [XlsxMin], [XlsxMax]
+     LengthInvalid,     // [XlsxLength], [XlsxMinLength], [XlsxMaxLength]
+     PatternMismatch,   // [XlsxRegex]
+     ValueNotAllowed,   // [XlsxAllowedValues]
      SecurityViolation, // Injection de formule / payload dangereux bloqué
      ConverterError,
      WriteError,
-     CorruptedFile
+     CorruptedFile,
+     EncryptedFile      // Fichier Excel protégé par mot de passe (conteneur OLE2/CFB)
 }
 
 /// <summary>

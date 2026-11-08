@@ -4,6 +4,7 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.IO.Compression;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -15,588 +16,540 @@ namespace FlashXlsx.Core;
 
 internal static class SheetRowReader
 {
-     private static readonly XmlReaderSettings Settings = new()
+     private readonly record struct RawCell(int ColIndex, string Value, bool IsNumeric, bool IsBoolean);
+
+     private sealed class AtomizedXmlNames
      {
-          Async = true,
-          IgnoreWhitespace = true,
-          IgnoreComments = true,
-          IgnoreProcessingInstructions = true,
-          DtdProcessing = DtdProcessing.Prohibit
-     };
+          public readonly NameTable Table = new();
+          public readonly string Row;
+          public readonly string Cell;
+          public readonly string Value;
+          public readonly string InlineString;
+          public readonly string Text;
+          public readonly string AttrRef;
+          public readonly string AttrType;
+          public readonly string TypeSharedString;
+          public readonly string TypeInlineString;
+          public readonly string TypeBoolean;
+          public readonly string TypeNumber;
+
+          public AtomizedXmlNames()
+          {
+               Row = Table.Add("row");
+               Cell = Table.Add("c");
+               Value = Table.Add("v");
+               InlineString = Table.Add("is");
+               Text = Table.Add("t");
+               AttrRef = Table.Add("r");
+               AttrType = Table.Add("t");
+               TypeSharedString = Table.Add("s");
+               TypeInlineString = Table.Add("inlineStr");
+               TypeBoolean = Table.Add("b");
+               TypeNumber = Table.Add("n");
+          }
+     }
 
      public static async IAsyncEnumerable<T> ReadTypedAsync<T>(
-         ZipArchiveEntry sheetEntry,
+         ZipArchiveEntry entry,
          string[] sharedStrings,
          IXlsxTypeMap<T> map,
          XlsxReadOptions options,
          [EnumeratorCancellation] CancellationToken ct = default)
      {
-          await using var stream = sheetEntry.Open();
-          using var reader = XmlReader.Create(stream, Settings);
+          if (options.MaxRows == 0)
+               yield break;
 
-          int propCount = map.ColumnCount;
-          int[] excelColToProp = ArrayPool<int>.Shared.Rent(128);
-          int[] propToExcelCol = ArrayPool<int>.Shared.Rent(propCount);
-          string?[] excelHeaders = ArrayPool<string?>.Shared.Rent(128);
+          var mergedTracker = LoadMergedCellsSafe(entry, options);
+          var names = new AtomizedXmlNames();
 
-          Array.Fill(excelColToProp, -1);
-          Array.Fill(propToExcelCol, -1);
-          Array.Fill(excelHeaders, null);
-
-          for (int i = 0; i < propCount; i++)
+          await using var rawStream = entry.Open();
+          await using var bufferedStream = new BufferedStream(rawStream, 65536);
+          using var reader = XmlReader.Create(bufferedStream, new XmlReaderSettings
           {
-               int fixedCol = map.GetFixedColumnIndex(i);
+               NameTable = names.Table,
+               IgnoreWhitespace = true,
+               IgnoreComments = true,
+               CheckCharacters = false
+          });
+
+          int colCount = map.ColumnCount;
+          int[] colToProp = ArrayPool<int>.Shared.Rent(Math.Max(256, colCount * 4));
+          Array.Fill(colToProp, -1);
+
+          RawCell[] rowBuffer = ArrayPool<RawCell>.Shared.Rent(Math.Max(64, colCount * 2));
+          int[] propToExcelCol = new int[colCount];
+          Array.Fill(propToExcelCol, -1);
+          string?[] excelHeaders = new string?[Math.Max(64, colCount * 2)];
+
+          bool hasFixedColumns = false;
+          for (int p = 0; p < colCount; p++)
+          {
+               int fixedCol = map.GetFixedColumnIndex(p);
                if (fixedCol >= 0)
                {
-                    if (fixedCol < excelColToProp.Length)
-                         excelColToProp[fixedCol] = i;
-                    propToExcelCol[i] = fixedCol;
-               }
-               else if (!options.HasHeaderRow && !options.AutoDetectHeaderRow)
-               {
-                    if (i < excelColToProp.Length)
-                         excelColToProp[i] = i;
-                    propToExcelCol[i] = i;
+                    hasFixedColumns = true;
+                    if (fixedCol >= colToProp.Length)
+                         ResizeIntArray(ref colToProp, fixedCol + 64, -1);
+                    colToProp[fixedCol] = p;
+                    propToExcelCol[p] = fixedCol;
                }
           }
 
-          Dictionary<string, int>? translationLookup = BuildTranslationLookup(map, options);
+          int resolvedHeaderRowNumber = options.HasHeaderRow ? options.HeaderRowNumber : 0;
+          bool headerResolved = !options.HasHeaderRow && !options.AutoDetectHeaderRow;
+          int currentRow = 0;
+          int rowsYielded = 0;
+          int rowsProcessed = 0;
+          const int maxHeaderSearchRows = 50;
+          var inlineSb = new StringBuilder(128);
 
           try
           {
-               int currentRow = 0;
-               bool inRow = false;
-               bool hasNonEmptyCell = false;
-               bool isHeaderRow = false;
-               bool headerFound = !options.HasHeaderRow && !options.AutoDetectHeaderRow;
-               int resolvedHeaderRowNumber = options.HasHeaderRow ? options.HeaderRowNumber : 0;
-               int matchedHeadersInCandidateRow = 0;
-               int minHeadersRequired = propCount >= 2 ? 2 : 1;
-
-               T currentInstance = default!;
-               int rowsYielded = 0;
-
-               while (await TryReadNextNodeAsync(reader, currentRow, options))
+               while (TryReadNextNode(reader, currentRow, options))
                {
-                    ct.ThrowIfCancellationRequested();
+                    if ((rowsProcessed & 1023) == 0)
+                         ct.ThrowIfCancellationRequested();
 
-                    if (reader.NodeType == XmlNodeType.Element)
+                    if (reader.NodeType == XmlNodeType.Element && ReferenceEquals(reader.LocalName, names.Row))
                     {
-                         if (reader.LocalName == "row")
+                         string? rAttr = reader.GetAttribute(names.AttrRef);
+                         currentRow = int.TryParse(rAttr, out int parsedRow) ? parsedRow : currentRow + 1;
+                         bool isEmptyRowTag = reader.IsEmptyElement;
+
+                         if (isEmptyRowTag && options.SkipEmptyRows)
+                              continue;
+
+                         if (!headerResolved && options.AutoDetectHeaderRow && currentRow <= maxHeaderSearchRows)
                          {
-                              var rAttr = reader.GetAttribute("r");
-                              currentRow = int.TryParse(rAttr, out int r) ? r : currentRow + 1;
-                              inRow = true;
-                              hasNonEmptyCell = false;
-
-                              if (!headerFound && options.AutoDetectHeaderRow)
+                              int cellCount = isEmptyRowTag
+                                  ? 0
+                                  : TryReadRowIntoBuffer(reader, names, sharedStrings, ref rowBuffer, inlineSb, currentRow, options);
+                              if (IsHeaderCandidateRow(rowBuffer.AsSpan(0, cellCount), map, options))
                               {
-                                   if (currentRow <= options.AutoDetectMaxRows)
-                                   {
-                                        isHeaderRow = true;
-                                        matchedHeadersInCandidateRow = 0;
-                                        Array.Fill(excelColToProp, -1);
-                                        Array.Fill(propToExcelCol, -1);
-                                        Array.Fill(excelHeaders, null);
-                                   }
-                                   else
-                                   {
-                                        // Aucune ligne d'en-tête trouvée dans la plage : repli sur HeaderRowNumber
-                                        headerFound = true;
-                                        resolvedHeaderRowNumber = options.HeaderRowNumber;
-                                        isHeaderRow = false;
-                                   }
-                              }
-                              else if (!headerFound)
-                              {
-                                   isHeaderRow = currentRow == options.HeaderRowNumber;
-                              }
-                              else
-                              {
-                                   isHeaderRow = false;
-                              }
-
-                              if (headerFound && !isHeaderRow && currentRow > resolvedHeaderRowNumber)
-                              {
-                                   currentInstance = map.CreateInstance();
-                              }
-                         }
-                         else if (reader.LocalName == "c" && inRow)
-                         {
-                              var cellRef = reader.GetAttribute("r");
-                              int colIndex = cellRef is not null ? XlsxCoordinateHelper.ParseColumnIndex(cellRef) : 0;
-                              var cellType = reader.GetAttribute("t");
-
-                              if (colIndex >= excelColToProp.Length)
-                              {
-                                   int newSize = Math.Max(colIndex + 32, excelColToProp.Length * 2);
-                                   var newColToProp = ArrayPool<int>.Shared.Rent(newSize);
-                                   Array.Fill(newColToProp, -1);
-                                   excelColToProp.AsSpan().CopyTo(newColToProp);
-                                   ArrayPool<int>.Shared.Return(excelColToProp);
-                                   excelColToProp = newColToProp;
-
-                                   var newHeaders = ArrayPool<string?>.Shared.Rent(newSize);
-                                   Array.Fill(newHeaders, null);
-                                   excelHeaders.AsSpan().CopyTo(newHeaders);
-                                   ArrayPool<string?>.Shared.Return(excelHeaders);
-                                   excelHeaders = newHeaders;
-                              }
-
-                              var (rawVal, isNumeric) = await ReadCellContentAsync(reader, cellType, sharedStrings);
-                              ReadOnlySpan<char> span = options.TrimStrings ? rawVal.AsSpan().Trim() : rawVal.AsSpan();
-
-                              if (isHeaderRow)
-                              {
-                                   string headerText = span.ToString();
-                                   excelHeaders[colIndex] = headerText;
-
-                                   int propIdx = (translationLookup is not null && translationLookup.TryGetValue(headerText, out int mappedIdx))
-                                       ? mappedIdx
-                                       : map.ResolvePropertyIndex(span);
-
-                                   if (propIdx >= 0)
-                                   {
-                                        excelColToProp[colIndex] = propIdx;
-                                        propToExcelCol[propIdx] = colIndex;
-                                        matchedHeadersInCandidateRow++;
-                                   }
-                              }
-                              else if (headerFound && currentRow > resolvedHeaderRowNumber)
-                              {
-                                   int propIdx = colIndex < excelColToProp.Length ? excelColToProp[colIndex] : -1;
-                                   if (propIdx >= 0)
-                                   {
-                                        if (!span.IsEmpty)
-                                             hasNonEmptyCell = true;
-
-                                        var status = map.TrySetCellValue(ref currentInstance, propIdx, span, isNumeric, options);
-                                        if (status != XlsxCellStatus.Success && status != XlsxCellStatus.Empty)
-                                        {
-                                             var err = new XlsxErrorContext(
-                                                 currentRow,
-                                                 colIndex,
-                                                 XlsxCoordinateHelper.GetColumnLetter(colIndex),
-                                                 excelHeaders[colIndex] ?? map.GetDefaultHeaderName(propIdx),
-                                                 rawVal,
-                                                 status);
-
-                                             options.OnError?.Invoke(in err);
-                                             if (options.ErrorMode == XlsxErrorMode.StopOnFirstError)
-                                                  yield break;
-                                        }
-                                   }
-                              }
-                         }
-                    }
-                    else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "row" && inRow)
-                    {
-                         inRow = false;
-
-                         if (isHeaderRow)
-                         {
-                              if (!options.AutoDetectHeaderRow || matchedHeadersInCandidateRow >= minHeadersRequired)
-                              {
-                                   headerFound = true;
                                    resolvedHeaderRowNumber = currentRow;
+                                   ApplyHeaderMapping(rowBuffer.AsSpan(0, cellCount), map, options, ref colToProp, propToExcelCol, ref excelHeaders);
+                                   headerResolved = true;
+                              }
+                              continue;
+                         }
 
-                                   // Réappliquer les éventuels [XlsxColumnLetter] fixes non écrasés
-                                   for (int i = 0; i < propCount; i++)
+                         if (options.HasHeaderRow && !options.AutoDetectHeaderRow && currentRow == resolvedHeaderRowNumber)
+                         {
+                              int cellCount = isEmptyRowTag
+                                  ? 0
+                                  : TryReadRowIntoBuffer(reader, names, sharedStrings, ref rowBuffer, inlineSb, currentRow, options);
+                              ApplyHeaderMapping(rowBuffer.AsSpan(0, cellCount), map, options, ref colToProp, propToExcelCol, ref excelHeaders);
+                              headerResolved = true;
+                              continue;
+                         }
+
+                         if (currentRow > resolvedHeaderRowNumber)
+                         {
+                              if (!headerResolved)
+                              {
+                                   if (!hasFixedColumns)
                                    {
-                                        int fixedCol = map.GetFixedColumnIndex(i);
-                                        if (fixedCol >= 0)
+                                        for (int p = 0; p < colCount; p++)
                                         {
-                                             if (fixedCol < excelColToProp.Length)
-                                                  excelColToProp[fixedCol] = i;
-                                             propToExcelCol[i] = fixedCol;
+                                             colToProp[p] = p;
+                                             propToExcelCol[p] = p;
                                         }
                                    }
+                                   headerResolved = true;
                               }
-                         }
-                         else if (headerFound && currentRow > resolvedHeaderRowNumber)
-                         {
-                              if (options.SkipEmptyRows && !hasNonEmptyCell)
+
+                              int cellCount = isEmptyRowTag
+                                  ? 0
+                                  : TryReadRowIntoBuffer(reader, names, sharedStrings, ref rowBuffer, inlineSb, currentRow, options);
+
+                              if (mergedTracker is not null)
+                              {
+                                   PropagateMergedCells(mergedTracker, currentRow, ref rowBuffer, ref cellCount);
+                              }
+
+                              if (options.StartRow.HasValue && currentRow < options.StartRow.Value)
                                    continue;
 
-                              bool isValid = map.ValidateRow(
-                                  ref currentInstance,
-                                  currentRow,
-                                  propToExcelCol.AsSpan(0, propCount),
-                                  excelHeaders,
-                                  options);
+                              if (options.SkipEmptyRows && IsRowEffectivelyEmpty(rowBuffer.AsSpan(0, cellCount)))
+                                   continue;
 
-                              if (!isValid && options.ErrorMode == XlsxErrorMode.StopOnFirstError)
-                                   yield break;
+                              T instance = map.CreateInstance();
 
-                              if (isValid || options.ErrorMode == XlsxErrorMode.ReportAndContinue)
+                              for (int i = 0; i < cellCount; i++)
                               {
-                                   rowsYielded++;
-                                   if (options.Progress is not null && rowsYielded % options.ProgressInterval == 0)
-                                        options.Progress.Report(rowsYielded);
+                                   ref readonly RawCell cell = ref rowBuffer[i];
+                                   if ((uint)cell.ColIndex >= (uint)colToProp.Length)
+                                        continue;
 
-                                   yield return currentInstance;
+                                   int propIdx = colToProp[cell.ColIndex];
+                                   if (propIdx < 0)
+                                        continue;
+
+                                   var status = map.TrySetCellValue(ref instance, propIdx, cell.Value.AsSpan(), cell.IsNumeric, options);
+                                   if (status != XlsxCellStatus.Success && status != XlsxCellStatus.Empty)
+                                   {
+                                        string? colHeader = (cell.ColIndex < excelHeaders.Length) ? excelHeaders[cell.ColIndex] : map.GetDefaultHeaderName(propIdx);
+                                        var err = new XlsxErrorContext(currentRow, cell.ColIndex, XlsxCoordinateHelper.GetColumnLetter(cell.ColIndex), colHeader, cell.Value, status);
+                                        options.OnError?.Invoke(in err);
+                                        if (options.ErrorMode == XlsxErrorMode.StopOnFirstError)
+                                             yield break;
+                                   }
                               }
+
+                              if (!map.ValidateRow(ref instance, currentRow, propToExcelCol, excelHeaders, options))
+                              {
+                                   if (options.ErrorMode == XlsxErrorMode.StopOnFirstError)
+                                        yield break;
+                              }
+
+                              rowsProcessed++;
+                              if (options.Progress is not null && rowsProcessed % options.ProgressInterval == 0)
+                                   options.Progress.Report(rowsProcessed);
+
+                              yield return instance;
+                              rowsYielded++;
+                              if (options.MaxRows.HasValue && rowsYielded >= options.MaxRows.Value)
+                                   yield break;
                          }
                     }
                }
 
-               if (options.Progress is not null && rowsYielded > 0 && rowsYielded % options.ProgressInterval != 0)
-                    options.Progress.Report(rowsYielded);
+               if (options.Progress is not null && rowsProcessed > 0 && rowsProcessed % options.ProgressInterval != 0)
+                    options.Progress.Report(rowsProcessed);
           }
           finally
           {
-               ArrayPool<int>.Shared.Return(excelColToProp);
-               ArrayPool<int>.Shared.Return(propToExcelCol);
-               ArrayPool<string?>.Shared.Return(excelHeaders);
+               ArrayPool<int>.Shared.Return(colToProp);
+               ArrayPool<RawCell>.Shared.Return(rowBuffer, clearArray: true);
           }
      }
 
      public static async IAsyncEnumerable<T> ReadTypedAsync<T, TContext>(
-         ZipArchiveEntry sheetEntry,
+         ZipArchiveEntry entry,
          string[] sharedStrings,
          IXlsxTypeMap<T, TContext> map,
          XlsxReadOptions<T, TContext> options,
          [EnumeratorCancellation] CancellationToken ct = default)
      {
-          await using var stream = sheetEntry.Open();
-          using var reader = XmlReader.Create(stream, Settings);
+          if (options.MaxRows == 0)
+               yield break;
 
-          int propCount = map.ColumnCount;
-          int[] excelColToProp = ArrayPool<int>.Shared.Rent(128);
-          int[] propToExcelCol = ArrayPool<int>.Shared.Rent(propCount);
-          string?[] excelHeaders = ArrayPool<string?>.Shared.Rent(128);
+          var mergedTracker = LoadMergedCellsSafe(entry, options);
+          var names = new AtomizedXmlNames();
 
-          Array.Fill(excelColToProp, -1);
-          Array.Fill(propToExcelCol, -1);
-          Array.Fill(excelHeaders, null);
-
-          for (int i = 0; i < propCount; i++)
+          await using var rawStream = entry.Open();
+          await using var bufferedStream = new BufferedStream(rawStream, 65536);
+          using var reader = XmlReader.Create(bufferedStream, new XmlReaderSettings
           {
-               int fixedCol = map.GetFixedColumnIndex(i);
+               NameTable = names.Table,
+               IgnoreWhitespace = true,
+               IgnoreComments = true,
+               CheckCharacters = false
+          });
+
+          int colCount = map.ColumnCount;
+          int[] colToProp = ArrayPool<int>.Shared.Rent(Math.Max(256, colCount * 4));
+          Array.Fill(colToProp, -1);
+
+          RawCell[] rowBuffer = ArrayPool<RawCell>.Shared.Rent(Math.Max(64, colCount * 2));
+          int[] propToExcelCol = new int[colCount];
+          Array.Fill(propToExcelCol, -1);
+          string?[] excelHeaders = new string?[Math.Max(64, colCount * 2)];
+
+          bool hasFixedColumns = false;
+          for (int p = 0; p < colCount; p++)
+          {
+               int fixedCol = map.GetFixedColumnIndex(p);
                if (fixedCol >= 0)
                {
-                    if (fixedCol < excelColToProp.Length)
-                         excelColToProp[fixedCol] = i;
-                    propToExcelCol[i] = fixedCol;
-               }
-               else if (!options.HasHeaderRow && !options.AutoDetectHeaderRow)
-               {
-                    if (i < excelColToProp.Length)
-                         excelColToProp[i] = i;
-                    propToExcelCol[i] = i;
+                    hasFixedColumns = true;
+                    if (fixedCol >= colToProp.Length)
+                         ResizeIntArray(ref colToProp, fixedCol + 64, -1);
+                    colToProp[fixedCol] = p;
+                    propToExcelCol[p] = fixedCol;
                }
           }
 
-          Dictionary<string, int>? translationLookup = BuildTranslationLookup(map, options);
+          int resolvedHeaderRowNumber = options.HasHeaderRow ? options.HeaderRowNumber : 0;
+          bool headerResolved = !options.HasHeaderRow && !options.AutoDetectHeaderRow;
+          int currentRow = 0;
+          int rowsYielded = 0;
+          int rowsProcessed = 0;
+          TContext context = options.Context;
+          const int maxHeaderSearchRows = 50;
+          var inlineSb = new StringBuilder(128);
 
           try
           {
-               int currentRow = 0;
-               bool inRow = false;
-               bool hasNonEmptyCell = false;
-               bool isHeaderRow = false;
-               bool headerFound = !options.HasHeaderRow && !options.AutoDetectHeaderRow;
-               int resolvedHeaderRowNumber = options.HasHeaderRow ? options.HeaderRowNumber : 0;
-               int matchedHeadersInCandidateRow = 0;
-               int minHeadersRequired = propCount >= 2 ? 2 : 1;
-
-               T currentInstance = default!;
-               TContext context = options.Context;
-               int rowsYielded = 0;
-
-               while (await TryReadNextNodeAsync(reader, currentRow, options))
+               while (TryReadNextNode(reader, currentRow, options))
                {
-                    ct.ThrowIfCancellationRequested();
+                    if ((rowsProcessed & 1023) == 0)
+                         ct.ThrowIfCancellationRequested();
 
-                    if (reader.NodeType == XmlNodeType.Element)
+                    if (reader.NodeType == XmlNodeType.Element && ReferenceEquals(reader.LocalName, names.Row))
                     {
-                         if (reader.LocalName == "row")
+                         string? rAttr = reader.GetAttribute(names.AttrRef);
+                         currentRow = int.TryParse(rAttr, out int parsedRow) ? parsedRow : currentRow + 1;
+                         bool isEmptyRowTag = reader.IsEmptyElement;
+
+                         if (isEmptyRowTag && options.SkipEmptyRows)
+                              continue;
+
+                         if (!headerResolved && options.AutoDetectHeaderRow && currentRow <= maxHeaderSearchRows)
                          {
-                              var rAttr = reader.GetAttribute("r");
-                              currentRow = int.TryParse(rAttr, out int r) ? r : currentRow + 1;
-                              inRow = true;
-                              hasNonEmptyCell = false;
-
-                              if (!headerFound && options.AutoDetectHeaderRow)
+                              int cellCount = isEmptyRowTag
+                                  ? 0
+                                  : TryReadRowIntoBuffer(reader, names, sharedStrings, ref rowBuffer, inlineSb, currentRow, options);
+                              if (IsHeaderCandidateRow(rowBuffer.AsSpan(0, cellCount), map, options))
                               {
-                                   if (currentRow <= options.AutoDetectMaxRows)
-                                   {
-                                        isHeaderRow = true;
-                                        matchedHeadersInCandidateRow = 0;
-                                        Array.Fill(excelColToProp, -1);
-                                        Array.Fill(propToExcelCol, -1);
-                                        Array.Fill(excelHeaders, null);
-                                   }
-                                   else
-                                   {
-                                        headerFound = true;
-                                        resolvedHeaderRowNumber = options.HeaderRowNumber;
-                                        isHeaderRow = false;
-                                   }
-                              }
-                              else if (!headerFound)
-                              {
-                                   isHeaderRow = currentRow == options.HeaderRowNumber;
-                              }
-                              else
-                              {
-                                   isHeaderRow = false;
-                              }
-
-                              if (headerFound && !isHeaderRow && currentRow > resolvedHeaderRowNumber)
-                              {
-                                   currentInstance = map.CreateInstance();
-                              }
-                         }
-                         else if (reader.LocalName == "c" && inRow)
-                         {
-                              var cellRef = reader.GetAttribute("r");
-                              int colIndex = cellRef is not null ? XlsxCoordinateHelper.ParseColumnIndex(cellRef) : 0;
-                              var cellType = reader.GetAttribute("t");
-
-                              if (colIndex >= excelColToProp.Length)
-                              {
-                                   int newSize = Math.Max(colIndex + 32, excelColToProp.Length * 2);
-                                   var newColToProp = ArrayPool<int>.Shared.Rent(newSize);
-                                   Array.Fill(newColToProp, -1);
-                                   excelColToProp.AsSpan().CopyTo(newColToProp);
-                                   ArrayPool<int>.Shared.Return(excelColToProp);
-                                   excelColToProp = newColToProp;
-
-                                   var newHeaders = ArrayPool<string?>.Shared.Rent(newSize);
-                                   Array.Fill(newHeaders, null);
-                                   excelHeaders.AsSpan().CopyTo(newHeaders);
-                                   ArrayPool<string?>.Shared.Return(excelHeaders);
-                                   excelHeaders = newHeaders;
-                              }
-
-                              var (rawVal, isNumeric) = await ReadCellContentAsync(reader, cellType, sharedStrings);
-                              ReadOnlySpan<char> span = options.TrimStrings ? rawVal.AsSpan().Trim() : rawVal.AsSpan();
-
-                              if (isHeaderRow)
-                              {
-                                   string headerText = span.ToString();
-                                   excelHeaders[colIndex] = headerText;
-
-                                   int propIdx = (translationLookup is not null && translationLookup.TryGetValue(headerText, out int mappedIdx))
-                                       ? mappedIdx
-                                       : map.ResolvePropertyIndex(span);
-
-                                   if (propIdx >= 0)
-                                   {
-                                        excelColToProp[colIndex] = propIdx;
-                                        propToExcelCol[propIdx] = colIndex;
-                                        matchedHeadersInCandidateRow++;
-                                   }
-                              }
-                              else if (headerFound && currentRow > resolvedHeaderRowNumber)
-                              {
-                                   int propIdx = colIndex < excelColToProp.Length ? excelColToProp[colIndex] : -1;
-                                   if (propIdx >= 0)
-                                   {
-                                        if (!span.IsEmpty)
-                                             hasNonEmptyCell = true;
-
-                                        var status = map.TrySetCellValue(ref currentInstance, propIdx, span, isNumeric, options);
-                                        if (status != XlsxCellStatus.Success && status != XlsxCellStatus.Empty)
-                                        {
-                                             var err = new XlsxErrorContext(
-                                                 currentRow,
-                                                 colIndex,
-                                                 XlsxCoordinateHelper.GetColumnLetter(colIndex),
-                                                 excelHeaders[colIndex] ?? map.GetDefaultHeaderName(propIdx),
-                                                 rawVal,
-                                                 status);
-
-                                             options.OnError?.Invoke(in err);
-                                             if (options.ErrorMode == XlsxErrorMode.StopOnFirstError)
-                                                  yield break;
-                                        }
-                                   }
-                              }
-                         }
-                    }
-                    else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "row" && inRow)
-                    {
-                         inRow = false;
-
-                         if (isHeaderRow)
-                         {
-                              if (!options.AutoDetectHeaderRow || matchedHeadersInCandidateRow >= minHeadersRequired)
-                              {
-                                   headerFound = true;
                                    resolvedHeaderRowNumber = currentRow;
+                                   ApplyHeaderMapping(rowBuffer.AsSpan(0, cellCount), map, options, ref colToProp, propToExcelCol, ref excelHeaders);
+                                   headerResolved = true;
+                              }
+                              continue;
+                         }
 
-                                   for (int i = 0; i < propCount; i++)
+                         if (options.HasHeaderRow && !options.AutoDetectHeaderRow && currentRow == resolvedHeaderRowNumber)
+                         {
+                              int cellCount = isEmptyRowTag
+                                  ? 0
+                                  : TryReadRowIntoBuffer(reader, names, sharedStrings, ref rowBuffer, inlineSb, currentRow, options);
+                              ApplyHeaderMapping(rowBuffer.AsSpan(0, cellCount), map, options, ref colToProp, propToExcelCol, ref excelHeaders);
+                              headerResolved = true;
+                              continue;
+                         }
+
+                         if (currentRow > resolvedHeaderRowNumber)
+                         {
+                              if (!headerResolved)
+                              {
+                                   if (!hasFixedColumns)
                                    {
-                                        int fixedCol = map.GetFixedColumnIndex(i);
-                                        if (fixedCol >= 0)
+                                        for (int p = 0; p < colCount; p++)
                                         {
-                                             if (fixedCol < excelColToProp.Length)
-                                                  excelColToProp[fixedCol] = i;
-                                             propToExcelCol[i] = fixedCol;
+                                             colToProp[p] = p;
+                                             propToExcelCol[p] = p;
                                         }
                                    }
+                                   headerResolved = true;
                               }
-                         }
-                         else if (headerFound && currentRow > resolvedHeaderRowNumber)
-                         {
-                              if (options.SkipEmptyRows && !hasNonEmptyCell)
+
+                              int cellCount = isEmptyRowTag
+                                  ? 0
+                                  : TryReadRowIntoBuffer(reader, names, sharedStrings, ref rowBuffer, inlineSb, currentRow, options);
+
+                              if (mergedTracker is not null)
+                              {
+                                   PropagateMergedCells(mergedTracker, currentRow, ref rowBuffer, ref cellCount);
+                              }
+
+                              if (options.StartRow.HasValue && currentRow < options.StartRow.Value)
                                    continue;
 
-                              bool isValid = map.ValidateRow(
-                                  ref currentInstance,
-                                  in context,
-                                  currentRow,
-                                  propToExcelCol.AsSpan(0, propCount),
-                                  excelHeaders,
-                                  options);
+                              if (options.SkipEmptyRows && IsRowEffectivelyEmpty(rowBuffer.AsSpan(0, cellCount)))
+                                   continue;
 
-                              if (!isValid && options.ErrorMode == XlsxErrorMode.StopOnFirstError)
-                                   yield break;
+                              T instance = map.CreateInstance();
 
-                              if (isValid || options.ErrorMode == XlsxErrorMode.ReportAndContinue)
+                              for (int i = 0; i < cellCount; i++)
                               {
-                                   rowsYielded++;
-                                   if (options.Progress is not null && rowsYielded % options.ProgressInterval == 0)
-                                        options.Progress.Report(rowsYielded);
+                                   ref readonly RawCell cell = ref rowBuffer[i];
+                                   if ((uint)cell.ColIndex >= (uint)colToProp.Length)
+                                        continue;
 
-                                   yield return currentInstance;
+                                   int propIdx = colToProp[cell.ColIndex];
+                                   if (propIdx < 0)
+                                        continue;
+
+                                   var status = map.TrySetCellValue(ref instance, propIdx, cell.Value.AsSpan(), cell.IsNumeric, options);
+                                   if (status != XlsxCellStatus.Success && status != XlsxCellStatus.Empty)
+                                   {
+                                        string? colHeader = (cell.ColIndex < excelHeaders.Length) ? excelHeaders[cell.ColIndex] : map.GetDefaultHeaderName(propIdx);
+                                        var err = new XlsxErrorContext(currentRow, cell.ColIndex, XlsxCoordinateHelper.GetColumnLetter(cell.ColIndex), colHeader, cell.Value, status);
+                                        options.OnError?.Invoke(in err);
+                                        if (options.ErrorMode == XlsxErrorMode.StopOnFirstError)
+                                             yield break;
+                                   }
                               }
+
+                              if (!map.ValidateRow(ref instance, in context, currentRow, propToExcelCol, excelHeaders, options))
+                              {
+                                   if (options.ErrorMode == XlsxErrorMode.StopOnFirstError)
+                                        yield break;
+                              }
+
+                              rowsProcessed++;
+                              if (options.Progress is not null && rowsProcessed % options.ProgressInterval == 0)
+                                   options.Progress.Report(rowsProcessed);
+
+                              yield return instance;
+                              rowsYielded++;
+                              if (options.MaxRows.HasValue && rowsYielded >= options.MaxRows.Value)
+                                   yield break;
                          }
                     }
                }
 
-               if (options.Progress is not null && rowsYielded > 0 && rowsYielded % options.ProgressInterval != 0)
-                    options.Progress.Report(rowsYielded);
+               if (options.Progress is not null && rowsProcessed > 0 && rowsProcessed % options.ProgressInterval != 0)
+                    options.Progress.Report(rowsProcessed);
           }
           finally
           {
-               ArrayPool<int>.Shared.Return(excelColToProp);
-               ArrayPool<int>.Shared.Return(propToExcelCol);
-               ArrayPool<string?>.Shared.Return(excelHeaders);
+               ArrayPool<int>.Shared.Return(colToProp);
+               ArrayPool<RawCell>.Shared.Return(rowBuffer, clearArray: true);
           }
      }
 
      public static async IAsyncEnumerable<Dictionary<string, XlsxValue>> ReadDictionaryAsync(
-         ZipArchiveEntry sheetEntry,
+         ZipArchiveEntry entry,
          string[] sharedStrings,
          XlsxReadOptions options,
          [EnumeratorCancellation] CancellationToken ct = default)
      {
-          await using var stream = sheetEntry.Open();
-          using var reader = XmlReader.Create(stream, Settings);
+          if (options.MaxRows == 0)
+               yield break;
 
-          string?[] colToKey = ArrayPool<string?>.Shared.Rent(128);
-          Array.Fill(colToKey, null);
+          var mergedTracker = LoadMergedCellsSafe(entry, options);
+          var names = new AtomizedXmlNames();
 
-          Dictionary<string, string>? reverseTranslations = null;
-          if (options.Translations.Count > 0)
+          await using var rawStream = entry.Open();
+          await using var bufferedStream = new BufferedStream(rawStream, 65536);
+          using var reader = XmlReader.Create(bufferedStream, new XmlReaderSettings
           {
-               reverseTranslations = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-               foreach (var kvp in options.Translations)
-               {
-                    foreach (var alias in kvp.Value)
-                         reverseTranslations[alias] = kvp.Key;
-               }
-          }
+               NameTable = names.Table,
+               IgnoreWhitespace = true,
+               IgnoreComments = true,
+               CheckCharacters = false
+          });
+
+          RawCell[] rowBuffer = ArrayPool<RawCell>.Shared.Rent(64);
+          var headersByCol = new Dictionary<int, string>();
+          int headerRow = options.HasHeaderRow ? options.HeaderRowNumber : 0;
+          int currentRow = 0;
+          int rowsYielded = 0;
+          var inlineSb = new StringBuilder(128);
 
           try
           {
-               int currentRow = 0;
-               bool inRow = false;
-               bool hasNonEmptyCell = false;
-               bool isHeaderRow = false;
-               Dictionary<string, XlsxValue>? currentDict = null;
-               int rowsYielded = 0;
-
-               while (await TryReadNextNodeAsync(reader, currentRow, options))
+               while (TryReadNextNode(reader, currentRow, options))
                {
-                    ct.ThrowIfCancellationRequested();
+                    if ((rowsYielded & 1023) == 0)
+                         ct.ThrowIfCancellationRequested();
 
-                    if (reader.NodeType == XmlNodeType.Element)
+                    if (reader.NodeType == XmlNodeType.Element && ReferenceEquals(reader.LocalName, names.Row))
                     {
-                         if (reader.LocalName == "row")
-                         {
-                              var rAttr = reader.GetAttribute("r");
-                              currentRow = int.TryParse(rAttr, out int r) ? r : currentRow + 1;
-                              inRow = true;
-                              hasNonEmptyCell = false;
-                              isHeaderRow = options.HasHeaderRow && currentRow == options.HeaderRowNumber;
+                         string? rAttr = reader.GetAttribute(names.AttrRef);
+                         currentRow = int.TryParse(rAttr, out int parsedRow) ? parsedRow : currentRow + 1;
+                         bool isEmptyRowTag = reader.IsEmptyElement;
 
-                              if (!isHeaderRow && (!options.HasHeaderRow || currentRow > options.HeaderRowNumber))
+                         if (isEmptyRowTag && options.SkipEmptyRows)
+                              continue;
+
+                         int cellCount = isEmptyRowTag
+                             ? 0
+                             : TryReadRowIntoBuffer(reader, names, sharedStrings, ref rowBuffer, inlineSb, currentRow, options);
+
+                         if (options.HasHeaderRow && currentRow == headerRow)
+                         {
+                              for (int i = 0; i < cellCount; i++)
                               {
-                                   currentDict = new Dictionary<string, XlsxValue>(StringComparer.OrdinalIgnoreCase);
+                                   ref readonly RawCell c = ref rowBuffer[i];
+                                   string colName = !string.IsNullOrWhiteSpace(c.Value)
+                                       ? c.Value.Trim()
+                                       : XlsxCoordinateHelper.GetColumnLetter(c.ColIndex);
+                                   headersByCol[c.ColIndex] = colName;
                               }
+                              continue;
                          }
-                         else if (reader.LocalName == "c" && inRow)
+
+                         if (currentRow > headerRow)
                          {
-                              var cellRef = reader.GetAttribute("r");
-                              int colIndex = cellRef is not null ? XlsxCoordinateHelper.ParseColumnIndex(cellRef) : 0;
-                              var cellType = reader.GetAttribute("t");
-
-                              if (colIndex >= colToKey.Length)
+                              if (mergedTracker is not null)
                               {
-                                   int newSize = Math.Max(colIndex + 32, colToKey.Length * 2);
-                                   var newArr = ArrayPool<string?>.Shared.Rent(newSize);
-                                   Array.Fill(newArr, null);
-                                   colToKey.AsSpan().CopyTo(newArr);
-                                   ArrayPool<string?>.Shared.Return(colToKey);
-                                   colToKey = newArr;
+                                   PropagateMergedCells(mergedTracker, currentRow, ref rowBuffer, ref cellCount);
                               }
 
-                              var (rawVal, isNumeric) = await ReadCellContentAsync(reader, cellType, sharedStrings);
-                              ReadOnlySpan<char> span = options.TrimStrings ? rawVal.AsSpan().Trim() : rawVal.AsSpan();
+                              if (options.StartRow.HasValue && currentRow < options.StartRow.Value)
+                                   continue;
 
-                              if (isHeaderRow)
-                              {
-                                   string header = span.ToString();
-                                   colToKey[colIndex] = (reverseTranslations is not null && reverseTranslations.TryGetValue(header, out var pivot))
-                                       ? pivot
-                                       : header;
-                              }
-                              else if (currentDict is not null)
-                              {
-                                   if (!span.IsEmpty)
-                                        hasNonEmptyCell = true;
+                              if (options.SkipEmptyRows && IsRowEffectivelyEmpty(rowBuffer.AsSpan(0, cellCount)))
+                                   continue;
 
-                                   string key = colToKey[colIndex] ?? XlsxCoordinateHelper.GetColumnLetter(colIndex);
-                                   currentDict[key] = ParseDynamicValue(span, cellType, isNumeric, options);
-                              }
-                         }
-                    }
-                    else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "row" && inRow)
-                    {
-                         inRow = false;
-                         if (currentDict is not null)
-                         {
-                              if (!options.SkipEmptyRows || hasNonEmptyCell)
+                              var dict = new Dictionary<string, XlsxValue>(cellCount, StringComparer.OrdinalIgnoreCase);
+                              for (int i = 0; i < cellCount; i++)
                               {
-                                   rowsYielded++;
-                                   if (options.Progress is not null && rowsYielded % options.ProgressInterval == 0)
-                                        options.Progress.Report(rowsYielded);
+                                   ref readonly RawCell c = ref rowBuffer[i];
+                                   string key = headersByCol.TryGetValue(c.ColIndex, out var h)
+                                       ? h
+                                       : XlsxCoordinateHelper.GetColumnLetter(c.ColIndex);
 
-                                   yield return currentDict;
+                                   dict[key] = ParseDynamicValue(c.Value, c.IsNumeric, c.IsBoolean);
                               }
-                              currentDict = null;
+
+                              yield return dict;
+                              rowsYielded++;
+                              if (options.MaxRows.HasValue && rowsYielded >= options.MaxRows.Value)
+                                   yield break;
                          }
                     }
                }
-
-               if (options.Progress is not null && rowsYielded > 0 && rowsYielded % options.ProgressInterval != 0)
-                    options.Progress.Report(rowsYielded);
           }
           finally
           {
-               ArrayPool<string?>.Shared.Return(colToKey);
+               ArrayPool<RawCell>.Shared.Return(rowBuffer, clearArray: true);
           }
      }
 
-     static async ValueTask<bool> TryReadNextNodeAsync(XmlReader xmlReader, int rowNum, XlsxReadOptions opts)
+     private static MergedCellsTracker? LoadMergedCellsSafe(ZipArchiveEntry entry, XlsxReadOptions options)
+     {
+          if (!options.FillMergedCells)
+               return null;
+
+          try
+          {
+               return MergedCellsTracker.LoadIfNeeded(entry, enabled: true);
+          }
+          catch (XmlException ex)
+          {
+               var err = new XlsxErrorContext(0, -1, string.Empty, null, ex.Message, XlsxCellStatus.CorruptedFile);
+               options.OnError?.Invoke(in err);
+               throw new InvalidDataException("Le contenu XML des cellules fusionnées (<mergeCells>) est corrompu.", ex);
+          }
+     }
+
+     private static void PropagateMergedCells(
+         MergedCellsTracker mergedTracker,
+         int currentRow,
+         ref RawCell[] rowBuffer,
+         ref int cellCount)
+     {
+          for (int i = 0; i < cellCount; i++)
+               mergedTracker.RecordCellValue(currentRow, rowBuffer[i].ColIndex, rowBuffer[i].Value);
+
+          foreach (var (mCol, mVal) in mergedTracker.GetPropagatedValuesForRow(currentRow))
+          {
+               bool exists = false;
+               for (int i = 0; i < cellCount; i++)
+               {
+                    if (rowBuffer[i].ColIndex == mCol && !string.IsNullOrEmpty(rowBuffer[i].Value))
+                    {
+                         exists = true;
+                         break;
+                    }
+               }
+               if (!exists)
+               {
+                    EnsureBufferCapacity(ref rowBuffer, cellCount + 1);
+                    rowBuffer[cellCount++] = new RawCell(mCol, mVal, IsNumeric: false, IsBoolean: false);
+               }
+          }
+     }
+
+     private static bool TryReadNextNode(XmlReader xmlReader, int rowNum, XlsxReadOptions opts)
      {
           try
           {
-               return await xmlReader.ReadAsync();
+               return xmlReader.Read();
           }
           catch (XmlException ex)
           {
@@ -606,110 +559,269 @@ internal static class SheetRowReader
           }
      }
 
-     private static XlsxValue ParseDynamicValue(ReadOnlySpan<char> span, string? cellType, bool isNumeric, XlsxReadOptions options)
+     private static int TryReadRowIntoBuffer(
+         XmlReader reader,
+         AtomizedXmlNames names,
+         string[] sharedStrings,
+         ref RawCell[] buffer,
+         StringBuilder inlineSb,
+         int currentRow,
+         XlsxReadOptions options)
      {
-          if (span.IsEmpty) return XlsxValue.Empty;
-
-          if (cellType == "b")
+          try
           {
-               return span.Equals("1", StringComparison.Ordinal) || span.Equals("true", StringComparison.OrdinalIgnoreCase);
+               return ReadRowIntoBuffer(reader, names, sharedStrings, ref buffer, inlineSb);
           }
-
-          if (isNumeric)
+          catch (XmlException ex)
           {
-               if (long.TryParse(span, NumberStyles.Integer, CultureInfo.InvariantCulture, out long l))
-                    return l;
-               if (double.TryParse(span, NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
-                    return d;
+               var err = new XlsxErrorContext(currentRow, -1, string.Empty, null, ex.Message, XlsxCellStatus.CorruptedFile);
+               options.OnError?.Invoke(in err);
+               throw new InvalidDataException($"Le contenu XML de la feuille Excel est corrompu à la ligne {currentRow}.", ex);
           }
-
-          return span.ToString();
      }
 
-     private static async ValueTask<(string Value, bool IsNumeric)> ReadCellContentAsync(
+     private static int ReadRowIntoBuffer(
          XmlReader reader,
-         string? cellType,
-         string[] sharedStrings)
+         AtomizedXmlNames names,
+         string[] sharedStrings,
+         ref RawCell[] buffer,
+         StringBuilder inlineSb)
      {
-          if (reader.IsEmptyElement)
-               return (string.Empty, false);
+          int count = 0;
+          int fallbackColIndex = 0;
 
-          string raw = string.Empty;
-          StringBuilder? richTextBuilder = null;
-          bool advance = true;
-
-          while (!advance || await reader.ReadAsync())
+          while (reader.Read())
           {
-               advance = true;
+               if (reader.NodeType == XmlNodeType.EndElement && ReferenceEquals(reader.LocalName, names.Row))
+                    break;
 
-               if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "c")
+               if (reader.NodeType == XmlNodeType.Element && ReferenceEquals(reader.LocalName, names.Cell))
+               {
+                    bool isEmptyCell = reader.IsEmptyElement;
+                    int colIdx = fallbackColIndex;
+                    string? cellType = null;
+
+                    if (reader.MoveToFirstAttribute())
+                    {
+                         do
+                         {
+                              if (ReferenceEquals(reader.LocalName, names.AttrRef))
+                              {
+                                   colIdx = ParseColumnIndex(reader.Value.AsSpan());
+                              }
+                              else if (ReferenceEquals(reader.LocalName, names.AttrType))
+                              {
+                                   cellType = reader.Value;
+                              }
+                         } while (reader.MoveToNextAttribute());
+                         reader.MoveToElement();
+                    }
+
+                    fallbackColIndex = colIdx + 1;
+                    if (isEmptyCell)
+                         continue;
+
+                    bool isNumeric = cellType is null || cellType == names.TypeNumber;
+                    bool isBoolean = cellType == names.TypeBoolean;
+                    string val = ReadCellContent(reader, names, cellType, sharedStrings, inlineSb);
+
+                    EnsureBufferCapacity(ref buffer, count + 1);
+                    buffer[count++] = new RawCell(colIdx, val, isNumeric, isBoolean);
+               }
+          }
+
+          return count;
+     }
+
+     private static int ParseColumnIndex(ReadOnlySpan<char> cellRef)
+     {
+          int col = 0;
+          for (int i = 0; i < cellRef.Length; i++)
+          {
+               char c = cellRef[i];
+               if (c is >= 'A' and <= 'Z')
+                    col = (col * 26) + (c - 'A' + 1);
+               else if (c is >= 'a' and <= 'z')
+                    col = (col * 26) + (c - 'a' + 1);
+               else
+                    break;
+          }
+          return col > 0 ? col - 1 : 0;
+     }
+
+     private static string ReadCellContent(
+         XmlReader reader,
+         AtomizedXmlNames names,
+         string? cellType,
+         string[] sharedStrings,
+         StringBuilder inlineSb)
+     {
+          string? vText = null;
+          string? inlineText = null;
+
+          while (reader.Read())
+          {
+               if (reader.NodeType == XmlNodeType.EndElement && ReferenceEquals(reader.LocalName, names.Cell))
                     break;
 
                if (reader.NodeType == XmlNodeType.Element)
                {
-                    if (reader.LocalName == "f")
+                    if (ReferenceEquals(reader.LocalName, names.Value) && !reader.IsEmptyElement)
                     {
-                         await reader.SkipAsync();
-                         advance = false;
+                         vText = reader.ReadElementContentAsString();
+                         if (reader.NodeType == XmlNodeType.EndElement && ReferenceEquals(reader.LocalName, names.Cell))
+                              break;
                     }
-                    else if (reader.LocalName == "v")
+                    else if (ReferenceEquals(reader.LocalName, names.InlineString) && !reader.IsEmptyElement)
                     {
-                         raw = await reader.ReadElementContentAsStringAsync();
-                         advance = false;
-                    }
-                    else if (reader.LocalName == "t")
-                    {
-                         string part = await reader.ReadElementContentAsStringAsync();
-                         advance = false;
-
-                         if (richTextBuilder is not null)
-                         {
-                              richTextBuilder.Append(part);
-                         }
-                         else if (raw.Length > 0)
-                         {
-                              richTextBuilder = new StringBuilder(raw.Length + part.Length);
-                              richTextBuilder.Append(raw).Append(part);
-                         }
-                         else
-                         {
-                              raw = part;
-                         }
+                         inlineText = ReadInlineString(reader, names, inlineSb);
+                         if (reader.NodeType == XmlNodeType.EndElement && ReferenceEquals(reader.LocalName, names.Cell))
+                              break;
                     }
                }
           }
 
-          if (richTextBuilder is not null)
-               raw = richTextBuilder.ToString();
+          if (cellType == names.TypeInlineString)
+               return inlineText ?? string.Empty;
 
-          if (cellType == "s")
-          {
-               if (int.TryParse(raw, out int ssIdx) && (uint)ssIdx < (uint)sharedStrings.Length)
-                    return (sharedStrings[ssIdx], false);
-               return (string.Empty, false);
-          }
+          if (vText is null)
+               return string.Empty;
 
-          bool isNumeric = cellType is null or "n";
-          return (raw, isNumeric);
+          if (cellType == names.TypeSharedString && int.TryParse(vText, out int sstIdx) && (uint)sstIdx < (uint)sharedStrings.Length)
+               return sharedStrings[sstIdx];
+
+          return vText;
      }
 
-     private static Dictionary<string, int>? BuildTranslationLookup<T>(IXlsxTypeMap<T> map, XlsxReadOptions options)
+     private static string ReadInlineString(XmlReader reader, AtomizedXmlNames names, StringBuilder sb)
      {
-          if (options.Translations.Count == 0)
-               return null;
+          sb.Clear();
+          while (reader.Read())
+          {
+               if (reader.NodeType == XmlNodeType.EndElement && ReferenceEquals(reader.LocalName, names.InlineString))
+                    break;
 
-          var lookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+               if (reader.NodeType == XmlNodeType.Element && ReferenceEquals(reader.LocalName, names.Text) && !reader.IsEmptyElement)
+               {
+                    sb.Append(reader.ReadElementContentAsString());
+                    if (reader.NodeType == XmlNodeType.EndElement && ReferenceEquals(reader.LocalName, names.InlineString))
+                         break;
+               }
+          }
+          return sb.ToString();
+     }
+
+     private static bool IsHeaderCandidateRow<T>(
+         ReadOnlySpan<RawCell> rowCells,
+         IXlsxTypeMap<T> map,
+         XlsxReadOptions options)
+     {
+          int matches = 0;
+          for (int i = 0; i < rowCells.Length; i++)
+          {
+               string val = rowCells[i].Value.Trim();
+               if (string.IsNullOrEmpty(val))
+                    continue;
+
+               int propIdx = ResolvePropertyWithTranslations(val, map, options);
+               if (propIdx >= 0)
+                    matches++;
+          }
+          return matches >= 1 && (matches >= 2 || map.ColumnCount == 1);
+     }
+
+     private static void ApplyHeaderMapping<T>(
+         ReadOnlySpan<RawCell> rowCells,
+         IXlsxTypeMap<T> map,
+         XlsxReadOptions options,
+         ref int[] colToProp,
+         int[] propToExcelCol,
+         ref string?[] excelHeaders)
+     {
+          for (int i = 0; i < rowCells.Length; i++)
+          {
+               ref readonly RawCell cell = ref rowCells[i];
+               if (cell.ColIndex >= colToProp.Length)
+                    ResizeIntArray(ref colToProp, cell.ColIndex + 64, -1);
+
+               if (cell.ColIndex >= excelHeaders.Length)
+                    Array.Resize(ref excelHeaders, cell.ColIndex + 64);
+
+               string trimmedHeader = cell.Value.Trim();
+               excelHeaders[cell.ColIndex] = trimmedHeader;
+
+               if (colToProp[cell.ColIndex] >= 0)
+                    continue;
+
+               int propIdx = ResolvePropertyWithTranslations(trimmedHeader, map, options);
+               if (propIdx >= 0 && propToExcelCol[propIdx] < 0)
+               {
+                    colToProp[cell.ColIndex] = propIdx;
+                    propToExcelCol[propIdx] = cell.ColIndex;
+               }
+          }
+     }
+
+     private static int ResolvePropertyWithTranslations<T>(string header, IXlsxTypeMap<T> map, XlsxReadOptions options)
+     {
           foreach (var kvp in options.Translations)
           {
-               int propIdx = map.ResolvePropertyIndex(kvp.Key.AsSpan());
-               if (propIdx >= 0)
+               for (int i = 0; i < kvp.Value.Length; i++)
                {
-                    foreach (var excelHeader in kvp.Value)
+                    if (string.Equals(kvp.Value[i], header, StringComparison.OrdinalIgnoreCase))
                     {
-                         lookup[excelHeader] = propIdx;
+                         int idx = map.ResolvePropertyIndex(kvp.Key.AsSpan());
+                         if (idx >= 0) return idx;
                     }
                }
           }
-          return lookup;
+          return map.ResolvePropertyIndex(header.AsSpan());
+     }
+
+     private static bool IsRowEffectivelyEmpty(ReadOnlySpan<RawCell> cells)
+     {
+          for (int i = 0; i < cells.Length; i++)
+          {
+               if (!string.IsNullOrWhiteSpace(cells[i].Value))
+                    return false;
+          }
+          return true;
+     }
+
+     private static XlsxValue ParseDynamicValue(string raw, bool isNumeric, bool isBoolean)
+     {
+          if (string.IsNullOrEmpty(raw))
+               return XlsxValue.Empty;
+
+          if (isBoolean)
+               return raw is "1" or "true" or "TRUE";
+
+          if (isNumeric)
+          {
+               if (long.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out long l))
+                    return l;
+               if (double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out double d))
+                    return d;
+          }
+
+          return raw;
+     }
+
+     private static void EnsureBufferCapacity(ref RawCell[] buffer, int requiredSize)
+     {
+          if (requiredSize <= buffer.Length)
+               return;
+
+          RawCell[] newBuf = ArrayPool<RawCell>.Shared.Rent(buffer.Length * 2);
+          Array.Copy(buffer, newBuf, buffer.Length);
+          ArrayPool<RawCell>.Shared.Return(buffer, clearArray: true);
+          buffer = newBuf;
+     }
+
+     private static void ResizeIntArray(ref int[] array, int newSize, int defaultFill)
+     {
+          int oldLen = array.Length;
+          Array.Resize(ref array, newSize);
+          Array.Fill(array, defaultFill, oldLen, newSize - oldLen);
      }
 }
