@@ -47,7 +47,8 @@ public readonly record struct XlsxErrorContext(
     string ColumnLetter,
     string? ColumnName,
     string RawValue,
-    XlsxCellStatus Status
+    XlsxCellStatus Status,
+    string? SheetName = null
 );
 
 /// <summary>

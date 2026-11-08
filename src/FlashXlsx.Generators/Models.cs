@@ -50,7 +50,6 @@ internal sealed record PropertyModel(
     bool IgnoreIfHasContext,
     ImmutableArray<string> BoolTrueValues,
     ImmutableArray<string> BoolFalseValues,
-    // Nouvelles fonctionnalités
     int? ColumnOrder,
     string? Formula,
     int TextCase, // 0=None, 1=Upper, 2=Lower, 3=Title
@@ -78,7 +77,8 @@ internal sealed record PropertyModel(
     bool IsInitOnly,
     int ConstructorParamIndex,
     string? ConverterTypeFullName,
-    ConverterKind ConverterKind
+    ConverterKind ConverterKind,
+    string? NumberFormat
 );
 
 internal sealed record TypeModel(

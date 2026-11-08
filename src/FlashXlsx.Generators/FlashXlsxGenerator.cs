@@ -22,6 +22,7 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
      private const string RequiredIfAttrName = "FlashXlsx.Abstractions.XlsxRequiredIfAttribute";
      private const string IgnoreIfAttrName = "FlashXlsx.Abstractions.XlsxIgnoreIfAttribute";
      private const string BooleanAttrName = "FlashXlsx.Abstractions.XlsxBooleanAttribute";
+     private const string NumberFormatAttrName = "FlashXlsx.Abstractions.XlsxNumberFormatAttribute";
 
      private const string CaseAttrName = "FlashXlsx.Abstractions.XlsxCaseAttribute";
      private const string TrimAttrName = "FlashXlsx.Abstractions.XlsxTrimAttribute";
@@ -106,6 +107,14 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
          category: "FlashXlsx",
          DiagnosticSeverity.Error,
          isEnabledByDefault: true);
+
+     private static readonly DiagnosticDescriptor InvalidNumberFormatError = new(
+        id: "FX009",
+        title: "Attribut [XlsxNumberFormat] invalide",
+        messageFormat: "L'attribut [XlsxNumberFormat] sur la propriété '{0}' nécessite un code de format non vide et s'applique uniquement aux propriétés numériques",
+        category: "FlashXlsx",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
 
      public void Initialize(IncrementalGeneratorInitializationContext context)
      {
@@ -207,6 +216,7 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
 
                int? columnOrder = null;
                string? formula = null;
+               string? numberFormat = null;
                int textCase = 0;
                int trimMode = 0;
                double? minValue = null;
@@ -285,6 +295,10 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
                     else if (attrFullName == FormulaAttrName && attr.ConstructorArguments.Length > 0)
                     {
                          formula = attr.ConstructorArguments[0].Value?.ToString();
+                    }
+                    else if (attrFullName == NumberFormatAttrName && attr.ConstructorArguments.Length > 0)
+                    {
+                         numberFormat = attr.ConstructorArguments[0].Value?.ToString();
                     }
                     else if (attrFullName == CaseAttrName && attr.ConstructorArguments.Length > 0 && attr.ConstructorArguments[0].Value is int cVal)
                     {
@@ -409,6 +423,19 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
                     continue;
                }
 
+               if (numberFormat is not null)
+               {
+                    bool isNumericKind = kind is SupportedPropertyKind.Int32
+                        or SupportedPropertyKind.Int64
+                        or SupportedPropertyKind.Double
+                        or SupportedPropertyKind.Decimal;
+
+                    if (string.IsNullOrWhiteSpace(numberFormat) || !isNumericKind)
+                    {
+                         diagnostics.Add(Diagnostic.Create(InvalidNumberFormatError, member.Locations.FirstOrDefault(), member.Name));
+                    }
+               }
+
                if (kind is SupportedPropertyKind.StringArray or SupportedPropertyKind.StringList && splitSeparator is null)
                {
                     splitSeparator = ';';
@@ -456,7 +483,8 @@ public sealed class FlashXlsxGenerator : IIncrementalGenerator
                    IsInitOnly: isInitOnly,
                    ConstructorParamIndex: ctorParamIdx,
                    ConverterTypeFullName: converterTypeFullName,
-                   ConverterKind: converterKind);
+                   ConverterKind: converterKind,
+                   NumberFormat: numberFormat);
 
                rawProps.Add((propModel, declarationIndex++));
           }

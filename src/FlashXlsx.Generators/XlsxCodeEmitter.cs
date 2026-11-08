@@ -205,6 +205,18 @@ internal static class XlsxCodeEmitter
           sb.AppendLine("    };");
           sb.AppendLine();
 
+          // GetExcelNumberFormat
+          sb.AppendLine("    public string? GetExcelNumberFormat(int propertyIndex) => propertyIndex switch");
+          sb.AppendLine("    {");
+          for (int i = 0; i < model.Properties.Length; i++)
+          {
+               if (model.Properties[i].NumberFormat is { } numFmt)
+                    sb.AppendLine($"        {i} => \"{EscapeString(numFmt)}\",");
+          }
+          sb.AppendLine("        _ => null");
+          sb.AppendLine("    };");
+          sb.AppendLine();
+
           // GetPropertyName
           sb.AppendLine("    public string GetPropertyName(int propertyIndex) => propertyIndex switch");
           sb.AppendLine("    {");

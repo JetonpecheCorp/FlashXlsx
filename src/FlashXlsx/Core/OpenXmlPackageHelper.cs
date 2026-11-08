@@ -1,10 +1,6 @@
 ﻿using FlashXlsx.Abstractions;
-using System;
-using System.Collections.Generic;
 using System.IO.Compression;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace FlashXlsx.Core;
 
@@ -24,6 +20,7 @@ internal static class OpenXmlPackageHelper
          IReadOnlyList<string> sheetNames,
          IReadOnlyList<XlsxTableArtifact>? tables = null,
          XlsxHeaderStyle? headerStyle = null,
+         IReadOnlyList<string>? customNumberFormats = null,
          CancellationToken ct = default)
      {
           tables ??= [];
@@ -35,38 +32,69 @@ internal static class OpenXmlPackageHelper
               "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
               "</Relationships>", ct);
 
-          // 2. xl/styles.xml (Index 0=Standard, 1=Date, 2=DateTime, 3=Time, 4=HeaderStyle)
-          string boldXml = (headerStyle?.Bold ?? true) ? "<b/>" : string.Empty;
-          string fgRgb = "FF" + (headerStyle?.TextHex ?? "000000").TrimStart('#');
-          string bgRgb = "FF" + (headerStyle?.BackgroundHex ?? "F2F2F2").TrimStart('#');
+          // 2. xl/styles.xml (Index 0=Standard, 1=Date, 2=DateTime, 3=Time, 4=HeaderStyle, 5+=CustomNumberFormats)
+          int customCount = customNumberFormats?.Count ?? 0;
+          var sbStyles = new StringBuilder();
+          sbStyles.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
+          sbStyles.Append("<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
 
-          await WriteUtf8EntryAsync(archive, "xl/styles.xml",
-              "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
-              "<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
-              "<numFmts count=\"3\">" +
-              "<numFmt numFmtId=\"164\" formatCode=\"yyyy-mm-dd\"/>" +
-              "<numFmt numFmtId=\"165\" formatCode=\"yyyy-mm-dd hh:mm:ss\"/>" +
-              "<numFmt numFmtId=\"166\" formatCode=\"hh:mm:ss\"/>" +
-              "</numFmts>" +
-              "<fonts count=\"2\">" +
-              "<font><sz val=\"11\"/><name val=\"Calibri\"/></font>" +
-              $"<font>{boldXml}<sz val=\"11\"/><color rgb=\"{fgRgb}\"/><name val=\"Calibri\"/></font>" +
-              "</fonts>" +
-              "<fills count=\"3\">" +
-              "<fill><patternFill patternType=\"none\"/></fill>" +
-              "<fill><patternFill patternType=\"gray125\"/></fill>" +
-              $"<fill><patternFill patternType=\"solid\"><fgColor rgb=\"{bgRgb}\"/><bgColor indexed=\"64\"/></patternFill></fill>" +
-              "</fills>" +
-              "<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>" +
-              "<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>" +
-              "<cellXfs count=\"5\">" +
-              "<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>" +
-              "<xf numFmtId=\"164\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
-              "<xf numFmtId=\"165\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
-              "<xf numFmtId=\"166\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>" +
-              "<xf numFmtId=\"0\" fontId=\"1\" fillId=\"2\" borderId=\"0\" xfId=\"0\" applyFont=\"1\" applyFill=\"1\"/>" +
-              "</cellXfs>" +
-              "</styleSheet>", ct);
+          if (customCount > 0)
+          {
+               sbStyles.Append($"<numFmts count=\"{customCount}\">");
+               for (int i = 0; i < customCount; i++)
+               {
+                    string escapedFmt = EscapeXmlAttribute(customNumberFormats![i]);
+                    sbStyles.Append($"<numFmt numFmtId=\"{164 + i}\" formatCode=\"{escapedFmt}\"/>");
+               }
+               sbStyles.Append("</numFmts>");
+          }
+
+          // Fonts (fontId=0 normal, fontId=1 gras pour en-tête)
+          bool headerBold = headerStyle?.Bold ?? false;
+          string headerColor = NormalizeHexColor(headerStyle?.TextHex, "000000");
+          sbStyles.Append("<fonts count=\"2\">");
+          sbStyles.Append("<font><sz val=\"11\"/><name val=\"Calibri\"/></font>");
+          sbStyles.Append($"<font>{(headerBold ? "<b/>" : "")}<sz val=\"11\"/><color rgb=\"FF{headerColor}\"/><name val=\"Calibri\"/></font>");
+          sbStyles.Append("</fonts>");
+
+          // Fills (fillId=0 none, fillId=1 gray125 requis par Excel, fillId=2 fond d'en-tête)
+          string bgHex = NormalizeHexColor(headerStyle?.BackgroundHex, "F2F2F2");
+          sbStyles.Append("<fills count=\"3\">");
+          sbStyles.Append("<fill><patternFill patternType=\"none\"/></fill>");
+          sbStyles.Append("<fill><patternFill patternType=\"gray125\"/></fill>");
+          sbStyles.Append($"<fill><patternFill patternType=\"solid\"><fgColor rgb=\"FF{bgHex}\"/><bgColor indexed=\"64\"/></patternFill></fill>");
+          sbStyles.Append("</fills>");
+
+          // Borders
+          sbStyles.Append("<borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders>");
+          sbStyles.Append("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>");
+
+          // CellXfs : 0=Défaut, 1=Date (14), 2=DateTime (22), 3=Time (21), 4=HeaderStyle, 5+=CustomNumberFormats
+          sbStyles.Append($"<cellXfs count=\"{5 + customCount}\">");
+          sbStyles.Append("<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>");
+          sbStyles.Append("<xf numFmtId=\"14\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>");
+          sbStyles.Append("<xf numFmtId=\"22\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>");
+          sbStyles.Append("<xf numFmtId=\"21\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>");
+
+          if (headerStyle is not null)
+          {
+               string fillAttr = headerStyle.BackgroundHex is not null ? " fillId=\"2\" applyFill=\"1\"" : " fillId=\"0\"";
+               sbStyles.Append($"<xf numFmtId=\"0\" fontId=\"1\"{fillAttr} borderId=\"0\" xfId=\"0\" applyFont=\"1\"/>");
+          }
+          else
+          {
+               sbStyles.Append("<xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\"/>");
+          }
+
+          for (int i = 0; i < customCount; i++)
+          {
+               sbStyles.Append($"<xf numFmtId=\"{164 + i}\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>");
+          }
+
+          sbStyles.Append("</cellXfs>");
+          sbStyles.Append("</styleSheet>");
+
+          await WriteUtf8EntryAsync(archive, "xl/styles.xml", sbStyles.ToString(), ct);
 
           // 3. [Content_Types].xml
           var ctSb = new StringBuilder();
@@ -153,6 +181,14 @@ internal static class OpenXmlPackageHelper
           await using var stream = entry.Open();
           byte[] bytes = Encoding.UTF8.GetBytes(content);
           await stream.WriteAsync(bytes, ct);
+     }
+
+     private static string NormalizeHexColor(string? hex, string fallback)
+     {
+          if (string.IsNullOrWhiteSpace(hex))
+               return fallback;
+          string trimmed = hex.Trim().TrimStart('#');
+          return trimmed.Length == 6 ? trimmed : fallback;
      }
 
      private static string EscapeXmlAttribute(string value)

@@ -26,6 +26,7 @@ internal sealed class XmlSheetWriter : IDisposable
      private readonly bool _hasExcelTable;
      private readonly bool _freezeHeader;
      private readonly IReadOnlyList<XlsxDropdownRule>? _dropdowns;
+     private readonly IReadOnlyDictionary<int, int>? _columnStyleIndices;
 
      private int _currentRowNumber;
      private bool _isHeaderRow;
@@ -40,7 +41,8 @@ internal sealed class XmlSheetWriter : IDisposable
          bool hasHeaderStyle = false,
          bool hasExcelTable = false,
          bool freezeHeader = false,
-         IReadOnlyList<XlsxDropdownRule>? dropdowns = null)
+         IReadOnlyList<XlsxDropdownRule>? dropdowns = null,
+         IReadOnlyDictionary<int, int>? columnStyleIndices = null)
      {
           _targetStream = entryStream;
           ColumnCount = columnCount;
@@ -48,6 +50,7 @@ internal sealed class XmlSheetWriter : IDisposable
           _hasExcelTable = hasExcelTable;
           _freezeHeader = freezeHeader;
           _dropdowns = dropdowns;
+          _columnStyleIndices = columnStyleIndices;
           _buffer = new ArrayBufferWriter<byte>(65536);
           _charScratch = ArrayPool<char>.Shared.Rent(256);
 
@@ -117,7 +120,7 @@ internal sealed class XmlSheetWriter : IDisposable
                     XlsxCellWriteKind.DateTime => 19,
                     XlsxCellWriteKind.Time => 8,
                     XlsxCellWriteKind.Formula => 12,
-                    _ => formattedSpan.Length
+                    _ => formattedSpan.Length + 4
                };
                if (displayLen > _colMaxWidths[columnIndex])
                     _colMaxWidths[columnIndex] = displayLen;
@@ -131,6 +134,11 @@ internal sealed class XmlSheetWriter : IDisposable
                case XlsxCellWriteKind.Number:
                     WriteRawUtf8("<c r=\""u8);
                     WriteUtf16AsUtf8(cellRef);
+                    if (_columnStyleIndices is not null && _columnStyleIndices.TryGetValue(columnIndex, out int numStyleIdx))
+                    {
+                         WriteRawUtf8("\" s=\""u8);
+                         WriteInt32(numStyleIdx);
+                    }
                     WriteRawUtf8("\"><v>"u8);
                     WriteUtf16AsUtf8(formattedSpan);
                     WriteRawUtf8("</v></c>"u8);
@@ -187,6 +195,11 @@ internal sealed class XmlSheetWriter : IDisposable
                     string expr = stringValue.StartsWith('=') ? stringValue.Substring(1) : stringValue;
                     WriteRawUtf8("<c r=\""u8);
                     WriteUtf16AsUtf8(cellRef);
+                    if (_columnStyleIndices is not null && _columnStyleIndices.TryGetValue(columnIndex, out int formStyleIdx))
+                    {
+                         WriteRawUtf8("\" s=\""u8);
+                         WriteInt32(formStyleIdx);
+                    }
                     WriteRawUtf8("\"><f>"u8);
                     WriteEscapedXmlText(expr.AsSpan());
                     WriteRawUtf8("</f></c>"u8);

@@ -1,14 +1,9 @@
 ﻿using FlashXlsx.Abstractions;
 using FlashXlsx.Abstractions.Internal;
 using FlashXlsx.Core;
-using System;
 using System.Buffers;
-using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.IO.Compression;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace FlashXlsx;
 
@@ -22,6 +17,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
      private readonly List<XlsxTableArtifact> _tables = [];
      private XlsxHeaderStyle? _headerStyle;
      private bool _completed;
+     private readonly List<string> _customNumberFormats = [];
 
      public XlsxWorkbookWriter(Stream stream, bool leaveOpen = false)
      {
@@ -42,6 +38,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           int colCount = map.ColumnCount;
           bool hasTable = options.ExcelTable is not null && options.WriteHeader && colCount > 0;
           var dropdowns = CollectDropdownRules(map, options);
+          var colStyles = CollectColumnStyleIndices(map);
 
           var entry = _archive.CreateEntry($"xl/worksheets/sheet{sheetNumber}.xml", CompressionLevel.Fastest);
           await using var entryStream = entry.Open();
@@ -52,7 +49,8 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
               hasHeaderStyle: options.HeaderStyle is not null,
               hasExcelTable: hasTable,
               freezeHeader: options.FreezeHeader,
-              dropdowns: dropdowns);
+              dropdowns: dropdowns,
+              columnStyleIndices: colStyles);
 
           int rowNumber = 1;
           var writtenHeaders = hasTable ? new List<string>(colCount) : null;
@@ -148,6 +146,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           int colCount = map.ColumnCount;
           bool hasTable = options.ExcelTable is not null && options.WriteHeader && colCount > 0;
           var dropdowns = CollectDropdownRules(map, options);
+          var colStyles = CollectColumnStyleIndices(map);
 
           var entry = _archive.CreateEntry($"xl/worksheets/sheet{sheetNumber}.xml", CompressionLevel.Fastest);
           await using var entryStream = entry.Open();
@@ -158,7 +157,8 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
               hasHeaderStyle: options.HeaderStyle is not null,
               hasExcelTable: hasTable,
               freezeHeader: options.FreezeHeader,
-              dropdowns: dropdowns);
+              dropdowns: dropdowns,
+              columnStyleIndices: colStyles);
 
           int rowNumber = 1;
           var writtenHeaders = hasTable ? new List<string>(colCount) : null;
@@ -252,6 +252,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           int colCount = map.ColumnCount;
           bool hasTable = options.ExcelTable is not null && options.WriteHeader && colCount > 0;
           var dropdowns = CollectDropdownRules(map, options);
+          var colStyles = CollectColumnStyleIndices(map);
 
           var entry = _archive.CreateEntry($"xl/worksheets/sheet{sheetNumber}.xml", CompressionLevel.Fastest);
           await using var entryStream = entry.Open();
@@ -262,7 +263,8 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
               hasHeaderStyle: options.HeaderStyle is not null,
               hasExcelTable: hasTable,
               freezeHeader: options.FreezeHeader,
-              dropdowns: dropdowns);
+              dropdowns: dropdowns,
+              columnStyleIndices: colStyles);
 
           int rowNumber = 1;
           TContext context = options.Context;
@@ -301,7 +303,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
                     {
                          try
                          {
-                              if (map.TryFormatCellValue(in item, c, currentRow, scratch, out int written, out var strVal, out var kind, options))
+                              if (map.TryFormatCellValue(in item, in context, c, currentRow, scratch, out int written, out var strVal, out var kind, options))
                               {
                                    writer.WriteCell(c, kind, scratch.AsSpan(0, written), strVal);
                               }
@@ -358,6 +360,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           int colCount = map.ColumnCount;
           bool hasTable = options.ExcelTable is not null && options.WriteHeader && colCount > 0;
           var dropdowns = CollectDropdownRules(map, options);
+          var colStyles = CollectColumnStyleIndices(map);
 
           var entry = _archive.CreateEntry($"xl/worksheets/sheet{sheetNumber}.xml", CompressionLevel.Fastest);
           await using var entryStream = entry.Open();
@@ -368,7 +371,8 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
               hasHeaderStyle: options.HeaderStyle is not null,
               hasExcelTable: hasTable,
               freezeHeader: options.FreezeHeader,
-              dropdowns: dropdowns);
+              dropdowns: dropdowns,
+              columnStyleIndices: colStyles);
 
           int rowNumber = 1;
           TContext context = options.Context;
@@ -406,7 +410,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
                     {
                          try
                          {
-                              if (map.TryFormatCellValue(in item, c, currentRow, scratch, out int written, out var strVal, out var kind, options))
+                              if (map.TryFormatCellValue(in item, in context, c, currentRow, scratch, out int written, out var strVal, out var kind, options))
                               {
                                    writer.WriteCell(c, kind, scratch.AsSpan(0, written), strVal);
                               }
@@ -494,12 +498,30 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
                          }
                     }
 
-                    writer.StartRow(rowNumber++);
+                    int currentRow = rowNumber++;
+                    writer.StartRow(currentRow);
                     for (int c = 0; c < columnKeys.Count; c++)
                     {
                          if (row.TryGetValue(columnKeys[c], out var val) && !val.IsEmpty)
                          {
-                              WriteDynamicCell(writer, c, val, scratch, options.SecurityPolicy);
+                              try
+                              {
+                                   WriteDynamicCell(writer, c, val, scratch, options.SecurityPolicy);
+                              }
+                              catch (Exception ex)
+                              {
+                                   var err = new XlsxErrorContext(
+                                       currentRow,
+                                       c,
+                                       XlsxCoordinateHelper.GetColumnLetter(c),
+                                       columnKeys[c],
+                                       ex.Message,
+                                       XlsxCellStatus.WriteError);
+
+                                   options.OnError?.Invoke(in err);
+                                   if (options.ErrorMode == XlsxErrorMode.StopOnFirstError)
+                                        throw;
+                              }
                          }
                     }
                     writer.EndRow();
@@ -518,6 +540,28 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           }
 
           await writer.CompleteAsync(ct);
+     }
+
+     private Dictionary<int, int>? CollectColumnStyleIndices<T>(IXlsxTypeMap<T> map)
+     {
+          Dictionary<int, int>? dict = null;
+          for (int c = 0; c < map.ColumnCount; c++)
+          {
+               string? fmt = map.GetExcelNumberFormat(c);
+               if (!string.IsNullOrEmpty(fmt))
+               {
+                    int fmtIdx = _customNumberFormats.IndexOf(fmt);
+                    if (fmtIdx < 0)
+                    {
+                         fmtIdx = _customNumberFormats.Count;
+                         _customNumberFormats.Add(fmt);
+                    }
+                    dict ??= new Dictionary<int, int>();
+                    // Les styles 0..4 sont réservés (0=Défaut, 1=Date, 2=DateTime, 3=Time, 4=Header)
+                    dict[c] = 5 + fmtIdx;
+               }
+          }
+          return dict;
      }
 
      private static List<XlsxDropdownRule>? CollectDropdownRules<T>(IXlsxTypeMap<T> map, XlsxWriteOptions options)
@@ -603,7 +647,7 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           if (_sheetNames.Count == 0)
                _sheetNames.Add("Sheet1");
 
-          await OpenXmlPackageHelper.WritePackageMetadataAsync(_archive, _sheetNames, _tables, _headerStyle, ct);
+          await OpenXmlPackageHelper.WritePackageMetadataAsync(_archive, _sheetNames, _tables, _headerStyle, _customNumberFormats, ct);
      }
 
      public async ValueTask DisposeAsync()

@@ -233,3 +233,13 @@ public sealed class XlsxConverterAttribute(Type converterType) : Attribute
 {
      public Type ConverterType => converterType;
 }
+
+/// <summary>
+/// Définit un format numérique natif Excel (ex: "#,##0.00 €", "0.00%", "00000") dans xl/styles.xml.
+/// La cellule reste un vrai nombre calculable dans Excel.
+/// </summary>
+[AttributeUsage(AttributeTargets.Property)]
+public sealed class XlsxNumberFormatAttribute(string formatCode) : Attribute
+{
+     public string FormatCode => formatCode;
+}

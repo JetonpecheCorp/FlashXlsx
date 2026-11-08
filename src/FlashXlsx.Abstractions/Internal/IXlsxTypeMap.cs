@@ -15,6 +15,11 @@ public interface IXlsxTypeMap<T>
      int ColumnCount { get; }
 
      /// <summary>
+     /// Retourne le code de format numérique natif Excel ([XlsxNumberFormat]) pour la colonne, ou null si aucun.
+     /// </summary>
+     string? GetExcelNumberFormat(int propertyIndex) => null;
+
+     /// <summary>
      /// Retourne les valeurs autorisées pour une liste déroulante Excel ([XlsxAllowedValues] ou membres d'un enum), ou null si aucun.
      /// </summary>
      string[]? GetDropdownValues(int propertyIndex) => null;
