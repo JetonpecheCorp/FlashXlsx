@@ -146,9 +146,9 @@ public sealed class XlsxWorkbookReader : IDisposable
      }
 
      public IAsyncEnumerable<Dictionary<string, XlsxValue>> ReadSheetAsDictionaryAsync(
-         string sheetName,
-         XlsxReadOptions? options = null,
-         CancellationToken ct = default)
+             string sheetName,
+             XlsxReadOptions? options = null,
+             CancellationToken ct = default)
      {
           options ??= new XlsxReadOptions();
           if (IsEncrypted)
@@ -170,6 +170,9 @@ public sealed class XlsxWorkbookReader : IDisposable
           var entry = _archive?.GetEntry(sheet.ZipEntryPath);
           if (entry is null)
                return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
+
+          if (Utf8SheetRowReader.CanUseFastUtf8Path(options))
+               return Utf8SheetRowReader.ReadDictionaryFastAsync(entry, _sharedStrings, options, ct);
 
           return SheetRowReader.ReadDictionaryAsync(entry, _sharedStrings, options, ct);
      }
@@ -199,6 +202,9 @@ public sealed class XlsxWorkbookReader : IDisposable
           if (entry is null)
                return AsyncEnumerable.Empty<Dictionary<string, XlsxValue>>();
 
+          if (Utf8SheetRowReader.CanUseFastUtf8Path(options))
+               return Utf8SheetRowReader.ReadDictionaryFastAsync(entry, _sharedStrings, options, ct);
+
           return SheetRowReader.ReadDictionaryAsync(entry, _sharedStrings, options, ct);
      }
 
@@ -211,6 +217,9 @@ public sealed class XlsxWorkbookReader : IDisposable
           var entry = _archive?.GetEntry(sheet.ZipEntryPath);
           if (entry is null)
                return AsyncEnumerable.Empty<T>();
+
+          if (Utf8SheetRowReader.CanUseFastUtf8Path(options))
+               return Utf8SheetRowReader.ReadTypedFastAsync(entry, _sharedStrings, map, options, ct);
 
           return SheetRowReader.ReadTypedAsync(entry, _sharedStrings, map, options, ct);
      }
@@ -227,6 +236,9 @@ public sealed class XlsxWorkbookReader : IDisposable
           var entry = _archive?.GetEntry(sheet.ZipEntryPath);
           if (entry is null)
                return AsyncEnumerable.Empty<T>();
+
+          if (Utf8SheetRowReader.CanUseFastUtf8Path(options))
+               return Utf8SheetRowReader.ReadTypedContextFastAsync(entry, _sharedStrings, map, options, ct);
 
           return SheetRowReader.ReadTypedAsync(entry, _sharedStrings, map, options, ct);
      }
