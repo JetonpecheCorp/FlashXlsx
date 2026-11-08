@@ -20,6 +20,18 @@ public class XlsxReadOptions
      public bool TrimStrings { get; set; } = true;
      public bool Use1904DateSystem { get; set; }
 
+     /// <summary>Active la détection automatique de la ligne d'en-tête dans les premières lignes du fichier.</summary>
+     public bool AutoDetectHeaderRow { get; set; }
+
+     /// <summary>Nombre maximal de lignes inspectées lors de l'auto-détection d'en-tête (défaut : 25).</summary>
+     public int AutoDetectMaxRows { get; set; } = 25;
+
+     /// <summary>Callback de progression recevant le nombre de lignes de données lues.</summary>
+     public IProgress<int>? Progress { get; set; }
+
+     /// <summary>Intervalle en nombre de lignes entre deux notifications de progression (défaut : 1000).</summary>
+     public int ProgressInterval { get; set; } = 1000;
+
      /// <summary>'\0' = auto-détection flexible ('.' et ','), sinon caractère explicite (ex: ',' ou '.').</summary>
      public char DecimalSeparator { get; set; } = '\0';
 
@@ -63,6 +75,20 @@ public class XlsxReadOptions
      public XlsxReadOptions WithDecimalSeparator(char separator)
      {
           DecimalSeparator = separator;
+          return this;
+     }
+
+     public XlsxReadOptions WithAutoDetectHeaderRow(bool enable = true, int maxScanRows = 25)
+     {
+          AutoDetectHeaderRow = enable;
+          AutoDetectMaxRows = maxScanRows > 0 ? maxScanRows : 25;
+          return this;
+     }
+
+     public XlsxReadOptions WithProgress(IProgress<int> progress, int intervalRows = 1000)
+     {
+          Progress = progress;
+          ProgressInterval = intervalRows > 0 ? intervalRows : 1000;
           return this;
      }
 
@@ -116,6 +142,18 @@ public class XlsxReadOptions<T> : XlsxReadOptions
      public new XlsxReadOptions<T> WithSkipEmptyRows(bool skip = true)
      {
           base.WithSkipEmptyRows(skip);
+          return this;
+     }
+
+     public new XlsxReadOptions<T> WithAutoDetectHeaderRow(bool enable = true, int maxScanRows = 25)
+     {
+          base.WithAutoDetectHeaderRow(enable, maxScanRows);
+          return this;
+     }
+
+     public new XlsxReadOptions<T> WithProgress(IProgress<int> progress, int intervalRows = 1000)
+     {
+          base.WithProgress(progress, intervalRows);
           return this;
      }
 
@@ -189,6 +227,19 @@ public sealed class XlsxReadOptions<T, TContext> : XlsxReadOptions<T>
           base.WithSecurityPolicy(policy);
           return this;
      }
+
+     public new XlsxReadOptions<T, TContext> WithAutoDetectHeaderRow(bool enable = true, int maxScanRows = 25)
+     {
+          base.WithAutoDetectHeaderRow(enable, maxScanRows);
+          return this;
+     }
+
+     public new XlsxReadOptions<T, TContext> WithProgress(IProgress<int> progress, int intervalRows = 1000)
+     {
+          base.WithProgress(progress, intervalRows);
+          return this;
+     }
+
      public new XlsxReadOptions<T, TContext> Translate<TProp>(
          Func<T, TProp> propertySelector,
          string firstHeader,

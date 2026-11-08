@@ -288,10 +288,17 @@ internal static class XlsxCodeEmitter
                {
                     int convIdx = converterTypes.IndexOf(p.ConverterTypeFullName);
                     sb.AppendLine("                if (rawValue.IsEmpty) return XlsxCellStatus.Empty;");
-                    sb.AppendLine($"                if (!_conv{convIdx}.TryRead(rawValue, options, out {p.TypeFullName} val))");
-                    sb.AppendLine("                    return XlsxCellStatus.InvalidFormat;");
-                    sb.AppendLine($"                {assignExpr} = val;");
-                    sb.AppendLine("                return XlsxCellStatus.Success;");
+                    sb.AppendLine("                try");
+                    sb.AppendLine("                {");
+                    sb.AppendLine($"                    if (!_conv{convIdx}.TryRead(rawValue, options, out {p.TypeFullName} val))");
+                    sb.AppendLine("                        return XlsxCellStatus.InvalidFormat;");
+                    sb.AppendLine($"                    {assignExpr} = val;");
+                    sb.AppendLine("                    return XlsxCellStatus.Success;");
+                    sb.AppendLine("                }");
+                    sb.AppendLine("                catch");
+                    sb.AppendLine("                {");
+                    sb.AppendLine("                    return XlsxCellStatus.ConverterError;");
+                    sb.AppendLine("                }");
                     sb.AppendLine("            }");
                     continue;
                }
@@ -424,12 +431,25 @@ internal static class XlsxCodeEmitter
           sb.AppendLine();
      }
 
+     private static string GetExcelColumnLetter(int columnIndex)
+     {
+          int dividend = columnIndex + 1;
+          string columnName = string.Empty;
+          while (dividend > 0)
+          {
+               int modulo = (dividend - 1) % 26;
+               columnName = Convert.ToChar('A' + modulo) + columnName;
+               dividend = (dividend - modulo) / 26;
+          }
+          return columnName;
+     }
+
      private static void EmitValidateRow(
-         StringBuilder sb,
-         TypeModel model,
-         List<string?> conditionTypes,
-         List<string?> converterTypes,
-         bool withContext)
+              StringBuilder sb,
+              TypeModel model,
+              List<string?> conditionTypes,
+              List<string?> converterTypes,
+              bool withContext)
      {
           string sig = withContext
               ? $"    public bool ValidateRow(ref {model.FullTypeName} instance, in {model.ContextTypeFullName} context, int rowNumber, ReadOnlySpan<int> propertyToExcelColIndex, ReadOnlySpan<string?> excelHeaders, XlsxReadOptions<{model.FullTypeName}, {model.ContextTypeFullName}> options)"
@@ -463,16 +483,26 @@ internal static class XlsxCodeEmitter
                              ? $"_conv{convIdx}.TryRead({rawExpr}, in instance, in context, options, out {p.TypeFullName} convVal_{i})"
                              : $"_conv{convIdx}.TryRead({rawExpr}, in instance, options, out {p.TypeFullName} convVal_{i})";
 
-                         sb.AppendLine($"        if ({tryReadCall})");
+                         sb.AppendLine($"        bool convOk_{i} = false;");
+                         sb.AppendLine($"        XlsxCellStatus convErrStatus_{i} = XlsxCellStatus.InvalidFormat;");
+                         sb.AppendLine("        try");
                          sb.AppendLine("        {");
-                         sb.AppendLine($"            buf.Val_{i} = convVal_{i};");
+                         sb.AppendLine($"            if ({tryReadCall})");
+                         sb.AppendLine("            {");
+                         sb.AppendLine($"                buf.Val_{i} = convVal_{i};");
+                         sb.AppendLine($"                convOk_{i} = true;");
+                         sb.AppendLine("            }");
                          sb.AppendLine("        }");
-                         sb.AppendLine("        else");
+                         sb.AppendLine("        catch");
+                         sb.AppendLine("        {");
+                         sb.AppendLine($"            convErrStatus_{i} = XlsxCellStatus.ConverterError;");
+                         sb.AppendLine("        }");
+                         sb.AppendLine($"        if (!convOk_{i})");
                          sb.AppendLine("        {");
                          sb.AppendLine("            isValid = false;");
                          sb.AppendLine($"            int excelCol = propertyToExcelColIndex[{i}];");
                          sb.AppendLine($"            string? colHeader = (excelCol >= 0 && excelCol < excelHeaders.Length) ? excelHeaders[excelCol] : \"{EscapeString(p.HeaderName)}\";");
-                         sb.AppendLine($"            var err = new XlsxErrorContext(rowNumber, excelCol, string.Empty, colHeader, buf.Raw_{i} ?? string.Empty, XlsxCellStatus.InvalidFormat);");
+                         sb.AppendLine($"            var err = new XlsxErrorContext(rowNumber, excelCol, string.Empty, colHeader, buf.Raw_{i} ?? string.Empty, convErrStatus_{i});");
                          sb.AppendLine("            options.OnError?.Invoke(in err);");
                          sb.AppendLine("            if (options.ErrorMode == XlsxErrorMode.StopOnFirstError) return false;");
                          sb.AppendLine("        }");
@@ -678,7 +708,18 @@ internal static class XlsxCodeEmitter
                          _ => "null"
                     };
 
-                    sb.AppendLine($"                string? convOut = {writeCall};");
+                    sb.AppendLine("                string? convOut;");
+                    sb.AppendLine("                try");
+                    sb.AppendLine("                {");
+                    sb.AppendLine($"                    convOut = {writeCall};");
+                    sb.AppendLine("                }");
+                    sb.AppendLine("                catch (Exception ex)");
+                    sb.AppendLine("                {");
+                    sb.AppendLine($"                    var convErr = new XlsxErrorContext(rowNumber, {i}, \"{GetExcelColumnLetter(i)}\", \"{EscapeString(p.HeaderName)}\", ex.Message, XlsxCellStatus.ConverterError);");
+                    sb.AppendLine("                    options.OnError?.Invoke(in convErr);");
+                    sb.AppendLine("                    if (options.ErrorMode == XlsxErrorMode.StopOnFirstError) throw;");
+                    sb.AppendLine("                    return false;");
+                    sb.AppendLine("                }");
                     sb.AppendLine("                if (convOut is null) return false;");
                     sb.AppendLine("                stringValue = options.SecurityPolicy == XlsxSecurityPolicy.Sanitize");
                     sb.AppendLine("                    ? XlsxSecuritySanitizer.SanitizeForExport(convOut, isExplicitFormula: false)");

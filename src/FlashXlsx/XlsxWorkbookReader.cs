@@ -1,12 +1,8 @@
 ﻿using FlashXlsx.Abstractions;
 using FlashXlsx.Abstractions.Internal;
 using FlashXlsx.Core;
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.IO.Compression;
-using System.Linq;
-using System.Threading;
+using System.Xml;
 
 namespace FlashXlsx;
 
@@ -17,14 +13,22 @@ public sealed class XlsxWorkbookReader : IDisposable
 {
      private readonly ZipArchive _archive;
      private readonly string[] _sharedStrings;
+     private readonly bool _use1904DateSystem;
 
      public IReadOnlyList<XlsxSheetInfo> Sheets { get; }
 
      public XlsxWorkbookReader(Stream stream, bool leaveOpen = false)
      {
-          _archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen);
-          _sharedStrings = SharedStringsReader.Read(_archive);
-          Sheets = WorkbookMetadataReader.ReadSheets(_archive);
+          try
+          {
+               _archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen);
+               _sharedStrings = SharedStringsReader.Read(_archive);
+               (Sheets, _use1904DateSystem) = WorkbookMetadataReader.ReadWorkbookInfo(_archive);
+          }
+          catch (Exception ex) when (ex is InvalidDataException or XmlException)
+          {
+               throw new InvalidDataException("Le fichier fourni n'est pas un classeur Excel (.xlsx) valide ou est corrompu.", ex);
+          }
      }
 
      public IAsyncEnumerable<T> ReadSheetAsync<T>(string sheetName, XlsxReadOptions<T>? options = null, CancellationToken ct = default)
@@ -53,9 +57,9 @@ public sealed class XlsxWorkbookReader : IDisposable
      }
 
      public IAsyncEnumerable<T> ReadSheetAsync<T, TContext>(
-        string sheetName,
-        XlsxReadOptions<T, TContext> options,
-        CancellationToken ct = default)
+         string sheetName,
+         XlsxReadOptions<T, TContext> options,
+         CancellationToken ct = default)
      {
           var sheet = Sheets.FirstOrDefault(s => string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase));
           if (Sheets.All(s => !string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase)))
@@ -87,6 +91,9 @@ public sealed class XlsxWorkbookReader : IDisposable
          CancellationToken ct = default)
      {
           options ??= new XlsxReadOptions();
+          if (_use1904DateSystem)
+               options.Use1904DateSystem = true;
+
           var sheet = Sheets.FirstOrDefault(s => string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase));
           if (Sheets.All(s => !string.Equals(s.Name, sheetName, StringComparison.OrdinalIgnoreCase)))
           {
@@ -107,6 +114,9 @@ public sealed class XlsxWorkbookReader : IDisposable
          CancellationToken ct = default)
      {
           options ??= new XlsxReadOptions();
+          if (_use1904DateSystem)
+               options.Use1904DateSystem = true;
+
           if ((uint)sheetIndex >= (uint)Sheets.Count)
           {
                NotifySheetNotFound($"Index:{sheetIndex}", options);
@@ -122,6 +132,9 @@ public sealed class XlsxWorkbookReader : IDisposable
 
      private IAsyncEnumerable<T> ReadSheetInternalAsync<T>(XlsxSheetInfo sheet, XlsxReadOptions options, CancellationToken ct)
      {
+          if (_use1904DateSystem)
+               options.Use1904DateSystem = true;
+
           var map = XlsxTypeRegistry.GetRequiredMap<T>();
           var entry = _archive.GetEntry(sheet.ZipEntryPath);
           if (entry is null)
@@ -129,11 +142,15 @@ public sealed class XlsxWorkbookReader : IDisposable
 
           return SheetRowReader.ReadTypedAsync(entry, _sharedStrings, map, options, ct);
      }
+
      private IAsyncEnumerable<T> ReadSheetInternalAsync<T, TContext>(
-        XlsxSheetInfo sheet,
-        XlsxReadOptions<T, TContext> options,
-        CancellationToken ct)
+         XlsxSheetInfo sheet,
+         XlsxReadOptions<T, TContext> options,
+         CancellationToken ct)
      {
+          if (_use1904DateSystem)
+               options.Use1904DateSystem = true;
+
           var map = XlsxTypeRegistry.GetRequiredContextMap<T, TContext>();
           var entry = _archive.GetEntry(sheet.ZipEntryPath);
           if (entry is null)

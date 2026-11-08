@@ -32,7 +32,10 @@ public enum XlsxCellStatus : byte
      LengthInvalid,    // [XlsxLength], [XlsxMinLength], [XlsxMaxLength]
      PatternMismatch,  // [XlsxRegex]
      ValueNotAllowed,  // [XlsxAllowedValues]
-     SecurityViolation // Injection de formule / payload dangereux bloqué
+     SecurityViolation, // Injection de formule / payload dangereux bloqué
+     ConverterError,
+     WriteError,
+     CorruptedFile
 }
 
 /// <summary>

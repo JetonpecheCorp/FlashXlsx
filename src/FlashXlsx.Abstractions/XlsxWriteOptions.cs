@@ -21,6 +21,10 @@ public class XlsxWriteOptions
      public bool AutoFitColumns { get; set; }
      public bool FreezeHeader { get; set; }
      public bool DropdownValidation { get; set; }
+     public IProgress<int>? Progress { get; set; }
+     public int ProgressInterval { get; set; } = 1000;
+     public XlsxErrorMode ErrorMode { get; set; } = XlsxErrorMode.StopOnFirstError;
+     public XlsxErrorHandler? OnError { get; set; }
      public XlsxHeaderStyle? HeaderStyle { get; set; }
      public XlsxTableOptions? ExcelTable { get; set; }
 
@@ -38,6 +42,14 @@ public class XlsxWriteOptions
      public XlsxWriteOptions WithSheetName(string sheetName) { SheetName = sheetName; return this; }
      public XlsxWriteOptions WithHeader(bool writeHeader) { WriteHeader = writeHeader; return this; }
      public XlsxWriteOptions WithCulture(CultureInfo culture) { Culture = culture; return this; }
+     public XlsxWriteOptions WithErrorMode(XlsxErrorMode mode) { ErrorMode = mode; return this; }
+     public XlsxWriteOptions WithErrorHandler(XlsxErrorHandler handler) { OnError = handler; return this; }
+     public XlsxWriteOptions WithProgress(IProgress<int> progress, int intervalRows = 1000)
+     {
+          Progress = progress;
+          ProgressInterval = intervalRows > 0 ? intervalRows : 1000;
+          return this;
+     }
 
      public XlsxWriteOptions WithDefaultBooleanValues(string[]? trueValues = null, string[]? falseValues = null)
      {
@@ -115,10 +127,18 @@ public class XlsxWriteOptions<T> : XlsxWriteOptions
      public new XlsxWriteOptions<T> WithCulture(CultureInfo culture) { base.WithCulture(culture); return this; }
      public new XlsxWriteOptions<T> WithDefaultBooleanValues(string[]? trueValues = null, string[]? falseValues = null) { base.WithDefaultBooleanValues(trueValues, falseValues); return this; }
      public new XlsxWriteOptions<T> WithDecimalSeparator(char separator) { base.WithDecimalSeparator(separator); return this; }
+     public new XlsxWriteOptions<T> WithErrorMode(XlsxErrorMode mode) { base.WithErrorMode(mode); return this; }
+     public new XlsxWriteOptions<T> WithErrorHandler(XlsxErrorHandler handler) { base.WithErrorHandler(handler); return this; }
      public new XlsxWriteOptions<T> WithTranslations(IReadOnlyDictionary<string, string> translations) 
      { 
           base.WithTranslations(translations); 
           return this; 
+     }
+
+     public new XlsxWriteOptions<T> WithProgress(IProgress<int> progress, int intervalRows = 1000)
+     {
+          base.WithProgress(progress, intervalRows);
+          return this;
      }
 
      public new XlsxWriteOptions<T> WithSecurityPolicy(XlsxSecurityPolicy policy)
@@ -189,6 +209,13 @@ public sealed class XlsxWriteOptions<T, TContext> : XlsxWriteOptions<T>
      public new XlsxWriteOptions<T, TContext> WithDefaultBooleanValues(string[]? trueValues = null, string[]? falseValues = null) { base.WithDefaultBooleanValues(trueValues, falseValues); return this; }
      public new XlsxWriteOptions<T, TContext> WithTranslations(IReadOnlyDictionary<string, string> translations) { base.WithTranslations(translations); return this; }
      public new XlsxWriteOptions<T, TContext> WithDecimalSeparator(char separator) { base.WithDecimalSeparator(separator); return this; }
+     public new XlsxWriteOptions<T, TContext> WithErrorMode(XlsxErrorMode mode) { base.WithErrorMode(mode); return this; }
+     public new XlsxWriteOptions<T, TContext> WithErrorHandler(XlsxErrorHandler handler) { base.WithErrorHandler(handler); return this; }
+     public new XlsxWriteOptions<T, TContext> WithProgress(IProgress<int> progress, int intervalRows = 1000)
+     {
+          base.WithProgress(progress, intervalRows);
+          return this;
+     }
 
      public new XlsxWriteOptions<T, TContext> WithAutoFitColumns(bool autoFit = true)
      {
