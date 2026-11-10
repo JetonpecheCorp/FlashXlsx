@@ -19,19 +19,23 @@ Il a été pensé pour être **simple comme un jeu d'enfant** pour un développe
 7. [Cas d'usage réel : API Web ASP.NET Core & Ingestion massive](#cas-dusage-réel--api-web-aspnet-core--ingestion-massive)
 8. [Guide complet des fonctionnalités par l'exemple](#guide-complet-des-fonctionnalités-par-lexemple)
    * [1. Modéliser vos données simplement](#1-modéliser-vos-données-simplement)
-   * [2. Vérifier les données à la volée (Validation déclarative)](#2-vérifier-les-données-à-la-volée-validation-déclarative)
-   * [3. Règles dynamiques selon le contexte de l'utilisateur](#3-règles-dynamiques-selon-le-contexte-de-lutilisateur)
-   * [4. Noms de colonnes variables et multilingues](#4-noms-de-colonnes-variables-et-multilingues)
-   * [5. Importer sans planter (Gestion d'erreurs tolérante)](#5-importer-sans-planter-gestion-derreurs-tolérante)
-   * [6. Détection des fichiers protégés par mot de passe](#6-détection-des-fichiers-protégés-par-mot-de-passe)
-   * [7. Nettoyage magique des devises et espaces insécables](#7-nettoyage-magique-des-devises-et-espaces-insécables)
-   * [8. Lire un fichier sans connaître ses colonnes (Dictionnaires)](#8-lire-un-fichier-sans-connaître-ses-colonnes-dictionnaires)
-   * [9. Gérer plusieurs onglets à la fois](#9-gérer-plusieurs-onglets-à-la-fois)
-   * [10. Découvrir les onglets sans charger le fichier](#10-découvrir-les-onglets-sans-charger-le-fichier)
-   * [11. Cellules fusionnées lues sans effort](#11-cellules-fusionnées-lues-sans-effort)
-   * [12. Créer de vrais tableaux Excel avec filtres](#12-créer-de-vrais-tableaux-excel-avec-filtres)
-   * [13. Aperçu rapide et pagination de gros fichiers](#13-aperçu-rapide-et-pagination-de-gros-fichiers)
-   * [14. Bouclier automatique contre les formules pirates](#14-bouclier-automatique-contre-les-formules-pirates)
+   * [2. Tableau de référence des attributs](#2-tableau-de-référence-des-attributs)
+   * [3. Vérifier les données à la volée (Validation déclarative)](#3-vérifier-les-données-à-la-volée-validation-déclarative)
+   * [4. Règles dynamiques selon le contexte de l'utilisateur](#4-règles-dynamiques-selon-le-contexte-de-lutilisateur)
+   * [5. Noms de colonnes variables et multilingues](#5-noms-de-colonnes-variables-et-multilingues)
+   * [6. Importer sans planter (Gestion d'erreurs tolérante)](#6-importer-sans-planter-gestion-derreurs-tolérante)
+   * [7. Détection des fichiers protégés par mot de passe](#7-détection-des-fichiers-protégés-par-mot-de-passe)
+   * [8. Nettoyage magique des devises et espaces insécables](#8-nettoyage-magique-des-devises-et-espaces-insécables)
+   * [9. Lire un fichier sans connaître ses colonnes (Dictionnaires)](#9-lire-un-fichier-sans-connaître-ses-colonnes-dictionnaires)
+   * [10. Gérer plusieurs onglets à la fois](#10-gérer-plusieurs-onglets-à-la-fois)
+   * [11. Découvrir les onglets sans charger le fichier](#11-découvrir-les-onglets-sans-charger-le-fichier)
+   * [12. Cellules fusionnées lues sans effort](#12-cellules-fusionnées-lues-sans-effort)
+   * [13. Créer de vrais tableaux Excel avec filtres](#13-créer-de-vrais-tableaux-excel-avec-filtres)
+   * [14. Aperçu rapide et pagination de gros fichiers](#14-aperçu-rapide-et-pagination-de-gros-fichiers)
+   * [15. Bouclier automatique contre les formules pirates](#15-bouclier-automatique-contre-les-formules-pirates)
+   * [16. Convertisseurs sur-mesure (IXlsxConverter & calculs entre colonnes)](#16-convertisseurs-sur-mesure-ixlsxconverter--calculs-entre-colonnes)
+   * [17. Découpage de listes en cellule & valeurs par défaut](#17-découpage-de-listes-en-cellule--valeurs-par-défaut)
+   * [18. Barre de progression en temps réel (IProgress)](#18-barre-de-progression-en-temps-réel-iprogress)
 9. [Sous le capot : Pour les experts et passionnés d'optimisation](#sous-le-capot--pour-les-experts-et-passionnés-doptimisation)
    * [L'analogie du tapis roulant (Streaming vs DOM)](#lanalogie-du-tapis-roulant-streaming-vs-dom)
    * [Scanner vectorisé UTF-8 (`ReadOnlySpan<byte>` & AVX2)](#scanner-vectorisé-utf-8-readonlyspanbyte--avx2)
@@ -86,7 +90,7 @@ Intel Core i5-7600K CPU 3.80GHz, 1 CPU, 4 logical and 4 physical cores
 | Lecture 100k - ClosedXML | 1 968,5 ms | 15,17x plus lent | 835,98 Mo | 61,9x plus de RAM | 186000 / 22000 / 2000 |
 
 > **Ce que révèlent ces chiffres :**
-> - **À l'écriture (129,7 ms) :** FlashXlsx génère **~770 000 lignes par seconde**. Les 13 Mo alloués correspondent presque uniquement à la taille du fichier ZIP généré.
+> - **À l'écriture (129,7 ms) :** FlashXlsx génère **~770 000 lignes par seconde**. Les 13 Mo alloués correspondent presque uniquement à la taille du fichier ZIP compressé final.
 > - **À la lecture (132,5 ms) :** FlashXlsx décode **~755 000 lignes par seconde** et alloue seulement 19,89 Mo (qui correspondent aux objets C# finaux créés pour vous). Le moteur interne n'alloue quasiment aucun déchet, évitant toute pause de nettoyage mémoire (Gen1 et Gen2 restent à zéro).
 
 ---
@@ -102,17 +106,20 @@ Intel Core i5-7600K CPU 3.80GHz, 1 CPU, 4 logical and 4 physical cores
 | | **Dates modernes** | Support natif de `DateOnly`, `TimeOnly`, `DateTime` et du vieux format calendrier Mac 1904. |
 | | **Nettoyage automatique devises** | Transforme automatiquement `"1 250,50 €"` ou `"$99.00"` en vrais nombres. |
 | | **Booléens souples** | Comprend automatiquement `"Oui"`, `"Non"`, `"1"`, `"0"`, `"True"`, `"False"`. |
-| **Validation** | **Règles déclaratives** | Vérifie les données avec des étiquettes simples (`[XlsxRequired]`, `[XlsxRange]`, etc.). |
+| | **Listes délimitées** | Découpe automatiquement les cellules contenant des collections (`"A;B;C"`). |
+| **Validation & Conversion** | **Règles déclaratives** | Vérifie les données avec des étiquettes simples (`[XlsxRequired]`, `[XlsxRange]`, etc.). |
 | | **Règles conditionnelles** | Oblige ou masque un champ seulement sous certaines conditions (`[XlsxRequiredIf]`). |
+| | **Convertisseurs typés** | Prise en charge des conversions avancées et calculs entre colonnes (`IXlsxConverter`). |
 | | **Contexte dynamique** | Adapte la lecture selon qui est connecté (administrateur, client, etc.). |
 | **Tolérance aux erreurs** | **Mode Report & Continue** | Ne plante pas au premier problème : continue de lire et vous dresse la liste des erreurs. |
-| | **Fichiers protégés par mot de passe** | Détecte les classeurs chiffrés dès les 8 premiers octets sans lever d'exception. |
+| | **Fichiers avec mot de passe** | Détecte les classeurs chiffrés dès les 8 premiers octets sans lever d'exception. |
 | | **Lignes vides & fantômes** | Ignore silencieusement les lignes vides ou remplies d'espaces inutiles. |
 | **Structure & Métadonnées** | **Multi-onglets** | Lit ou écrit plusieurs feuilles différentes dans le même fichier en un seul appel. |
 | | **Mode Dictionnaire** | Lit n'importe quel fichier Excel même si vous n'avez pas créé de classe C#. |
 | | **Cellules fusionnées** | Recopie intelligemment la valeur du haut sur toutes les sous-lignes fusionnées. |
 | | **Vrais tableaux Excel** | Génère de superbes tableaux avec auto-filtres et lignes colorées alternées. |
 | | **Aperçu & Pagination** | Permet de lire seulement de la ligne 100 à 150 pour faire un affichage paginé. |
+| | **Suivi de progression** | Émet des notifications régulières (`IProgress<int>`) sans bloquer le pipeline. |
 | **Sécurité** | **Protection Anti-Injections** | Empêche les utilisateurs malveillants de pirater Excel avec des formules dangereuses. |
 
 ---
@@ -301,7 +308,32 @@ public class Employe
 }
 ```
 
-### 2. Vérifier les données à la volée (Validation déclarative)
+### 2. Tableau de référence des attributs
+
+| Attribut | Cible | Description |
+| :--- | :--- | :--- |
+| `[XlsxSerializable]` | Classe / Struct | Active la génération de code Native AOT par le Source Generator. |
+| `[XlsxName("Titre")]` | Propriété | Définit le nom d'en-tête de la colonne dans le fichier Excel. |
+| `[XlsxColumnLetter("C")]` | Propriété | Associe la propriété directement à une lettre de colonne (ex: fichiers sans en-tête). |
+| `[XlsxColumnOrder(1)]` | Propriété | Détermine la position ordonnée de la colonne lors de l'exportation. |
+| `[XlsxIgnore]` | Propriété | Exclut totalement la propriété de la lecture et de l'écriture. |
+| `[XlsxRequired]` | Propriété | Déclenche une erreur si la cellule est vide ou absente à la lecture. |
+| `[XlsxRequiredIf(typeof(T))]` | Propriété | Rend la cellule obligatoire selon le résultat d'une condition métier `IXlsxCondition`. |
+| `[XlsxIgnoreIf(typeof(T))]` | Propriété | Ignore dynamiquement la propriété si la condition métier retourne `true`. |
+| `[XlsxRange(min, max)]` | Propriété | Valide les bornes numériques (`[XlsxMin]` et `[XlsxMax]` sont également disponibles). |
+| `[XlsxLength(min, max)]` | Propriété | Valide la longueur minimale / maximale d'une chaîne de texte. |
+| `[XlsxRegex("pattern")]` | Propriété | Vérifie la conformité du texte avec une expression régulière. |
+| `[XlsxAllowedValues(...)]` | Propriété | Restreint la saisie à une liste fermée de valeurs textuelles autorisées. |
+| `[XlsxBoolean(...)]` | Propriété | Définit les textes admis pour représenter `true` et `false`. |
+| `[XlsxSplit(';')]` | Propriété | Découpe une cellule en collection (`string[]` ou `List<string>`) selon un séparateur. |
+| `[XlsxDefault(...)]` | Propriété | Assigne une valeur par défaut (`Literal`, `Now`, `Today`, `NewGuid`, etc.). |
+| `[XlsxConverter(typeof(T))]` | Propriété | Branche un convertisseur sur-mesure (`IXlsxConverter`, `IXlsxRowConverter`). |
+| `[XlsxNumberFormat("...")]` | Propriété | Applique un masque numérique OpenXML natif (`#,##0.00 €`, `0.00%`). |
+| `[XlsxFormula("...")]` | Propriété | Écrit une formule Excel calculée dynamiquement. |
+| `[XlsxCase(...)]` | Propriété | Force la casse du texte (`Upper`, `Lower`, `Title`). |
+| `[XlsxTrim(...)]` | Propriété | Configure la stratégie de rognage des espaces sur les colonnes textuelles. |
+
+### 3. Vérifier les données à la volée (Validation déclarative)
 *En clair : Vous posez des barrières simples pour refuser les mauvaises saisies.*
 
 ```csharp
@@ -332,7 +364,7 @@ public class DemandeConge
 }
 ```
 
-### 3. Règles dynamiques selon le contexte de l'utilisateur
+### 4. Règles dynamiques selon le contexte de l'utilisateur
 *En clair : La lecture ou l'écriture s'adapte selon qui est connecté (administrateur ou simple utilisateur).*
 
 ```csharp
@@ -366,7 +398,7 @@ await foreach (var d in FlashXlsxSerializer.ReadAsync(flux, options))
 }
 ```
 
-### 4. Noms de colonnes variables et multilingues
+### 5. Noms de colonnes variables et multilingues
 *En clair : Le même code sait lire un fichier que les colonnes soient en français, anglais ou allemand.*
 
 ```csharp
@@ -382,7 +414,7 @@ var options = new XlsxReadOptions<Produit>()
 var produits = await FlashXlsxSerializer.ReadAllAsync(flux, options);
 ```
 
-### 5. Importer sans planter (Gestion d'erreurs tolérante)
+### 6. Importer sans planter (Gestion d'erreurs tolérante)
 *En clair : Si une ligne sur 10 000 a une faute de frappe, on ne jette pas tout le fichier à la poubelle.*
 
 ```csharp
@@ -408,7 +440,7 @@ foreach (var e in erreurs)
 }
 ```
 
-### 6. Détection des fichiers protégés par mot de passe
+### 7. Détection des fichiers protégés par mot de passe
 *En clair : Si un utilisateur envoie un fichier verrouillé, vous le savez tout de suite avec un message clair.*
 
 Les fichiers Excel chiffrés sont des conteneurs binaires OLE2. FlashXlsx inspecte les 8 premiers octets du fichier en une fraction de milliseconde :
@@ -422,7 +454,7 @@ if (reader.IsEncrypted)
 }
 ```
 
-### 7. Nettoyage magique des devises et espaces insécables
+### 8. Nettoyage magique des devises et espaces insécables
 *En clair : Fini les erreurs de parsing parce qu'Excel a écrit "1 250,50 €" sous forme de texte.*
 
 FlashXlsx nettoie automatiquement les valeurs numériques en mémoire :
@@ -432,7 +464,7 @@ FlashXlsx nettoie automatiquement les valeurs numériques en mémoire :
 
 Une cellule contenant `" 1 250,50 € "` sera convertie directement dans votre propriété C# `decimal` valant `1250.50m`.
 
-### 8. Lire un fichier sans connaître ses colonnes (Dictionnaires)
+### 9. Lire un fichier sans connaître ses colonnes (Dictionnaires)
 *En clair : Idéal pour inspecter un fichier inconnu dont vous ne connaissez pas le schéma à l'avance.*
 
 ```csharp
@@ -445,7 +477,7 @@ await foreach (Dictionary<string, XlsxValue> ligne in FlashXlsxSerializer.ReadDi
 }
 ```
 
-### 9. Gérer plusieurs onglets à la fois
+### 10. Gérer plusieurs onglets à la fois
 *En clair : Écrire ou lire un classeur complet avec ses feuilles "Clients", "Factures" et "Paramètres" en une seule fois.*
 
 ```csharp
@@ -472,7 +504,7 @@ using (var inStream = File.OpenRead("gestion.xlsx"))
 }
 ```
 
-### 10. Découvrir les onglets sans charger le fichier
+### 11. Découvrir les onglets sans charger le fichier
 *En clair : Afficher la liste des feuilles à un utilisateur avant qu'il ne choisisse laquelle importer.*
 
 ```csharp
@@ -490,7 +522,7 @@ await foreach (var ligne in reader.ReadSheetAsync<Produit>("Produits 2026"))
 }
 ```
 
-### 11. Cellules fusionnées lues sans effort
+### 12. Cellules fusionnées lues sans effort
 *En clair : Dans les tableaux où une catégorie est fusionnée sur 10 lignes, la valeur est recopiée sur chaque ligne.*
 
 ```csharp
@@ -503,17 +535,17 @@ await foreach (var ligne in FlashXlsxSerializer.ReadAsync(flux, options))
 }
 ```
 
-### 12. Créer de vrais tableaux Excel avec filtres
+### 13. Créer de vrais tableaux Excel avec filtres
 *En clair : Votre fichier Excel s'ouvre avec un tableau officiel stylisé, des couleurs alternées et les petits boutons de filtre sur les en-têtes.*
 
 ```csharp
 var options = new XlsxWriteOptions<Produit>()
-    .WithExcelTable(tableName: "TableauProduits", hasHeaderRow: true, showRowStripes: true);
+    .WithExcelTable(tableName: "TableauProduits", styleName: "TableStyleMedium2", showRowStripes: true, enableAutoFilter: true);
 
 await FlashXlsxSerializer.WriteAsync(flux, liste, options);
 ```
 
-### 13. Aperçu rapide et pagination de gros fichiers
+### 14. Aperçu rapide et pagination de gros fichiers
 *En clair : Charger rapidement les 20 premières lignes pour une prévisualisation à l'écran, sans lire tout le fichier.*
 
 ```csharp
@@ -524,11 +556,90 @@ var options = new XlsxReadOptions<Produit>()
 var apercu = await FlashXlsxSerializer.ReadAllAsync(flux, options);
 ```
 
-### 14. Bouclier automatique contre les formules pirates
+### 15. Bouclier automatique contre les formules pirates
 *En clair : Vous protège contre les pirates qui glissent des formules malveillantes dans les formulaires.*
 
 Si un utilisateur saisit un texte commençant par `=`, `+`, `-`, `@`, `\t` ou `\r` (par exemple `=cmd|' /C calc'!A0`), Excel tente normalement de l'exécuter à l'ouverture.
-FlashXlsx repère ces caractères et ajoute automatiquement une apostrophe discrète en préfixe : le texte s'affiche normalement sans jamais pouvoir exécuter de script.
+FlashXlsx repère ces caractères et applique sa politique de sécurité (neutralisation automatique par apostrophe ou levée de violation) sans configuration superflue.
+
+### 16. Convertisseurs sur-mesure (IXlsxConverter & calculs entre colonnes)
+*En clair : Vous gérez des formats de données exotiques ou calculez une colonne à partir des autres sans aucune allocation mémoire.*
+
+FlashXlsx propose trois niveaux de convertisseurs zéro-allocation :
+* **`IXlsxConverter<TProp>`** : conversion directe cellule ↔ propriété via `ReadOnlySpan<char>`.
+* **`IXlsxRowConverter<TRow, TProp>`** : accès aux autres propriétés déjà lues de la même ligne.
+* **`IXlsxRowConverter<TRow, TContext, TProp>`** : accès combiné à la ligne et à votre contexte applicatif.
+
+```csharp
+// Exemple : Calculer le montant TTC à partir du HT et de la TVA de la ligne
+public sealed class CalculTtcConverter : IXlsxRowConverter<LigneFacture, decimal>
+{
+    public bool TryRead(ReadOnlySpan<char> rawValue, in LigneFacture row, XlsxReadOptions options, out decimal value)
+    {
+        // Si la cellule est vide, on calcule dynamiquement : HT * (1 + TVA/100)
+        value = Math.Round(row.MontantHt * (1m + (row.TauxTva / 100m)), 2);
+        return true;
+    }
+
+    public string? Write(in decimal value, in LigneFacture row, XlsxWriteOptions options)
+        => value.ToString("F2", options.Culture);
+}
+
+[XlsxSerializable]
+public class LigneFacture
+{
+    public decimal MontantHt { get; set; }
+    public decimal TauxTva { get; set; }
+
+    [XlsxConverter(typeof(CalculTtcConverter))]
+    public decimal MontantTtc { get; set; }
+}
+```
+
+### 17. Découpage de listes en cellule & valeurs par défaut
+*En clair : Lire une liste de tags séparés par des points-virgules et injecter des valeurs automatiques si la cellule est vide.*
+
+```csharp
+[XlsxSerializable]
+public class Article
+{
+    public string Titre { get; set; } = string.Empty;
+
+    // Découpe automatiquement "Tech;Dev;DotNet" en tableau de chaînes
+    [XlsxSplit(separator: ';', TrimEntries = true, RemoveEmptyEntries = true)]
+    public string[] Tags { get; set; } = [];
+
+    // Génère un nouveau GUID si la cellule est vide à l'import
+    [XlsxDefault(XlsxDefaultKind.NewGuid)]
+    public Guid Identifiant { get; set; }
+
+    // Attribue la date du jour si non renseignée
+    [XlsxDefault(XlsxDefaultKind.Today)]
+    public DateOnly DateCreation { get; set; }
+
+    // Format numérique comptable natif Excel (la cellule reste calculable)
+    [XlsxNumberFormat("#,##0.00 €")]
+    public decimal PrixTTC { get; set; }
+}
+```
+
+### 18. Barre de progression en temps réel (IProgress)
+*En clair : Suivre l'avancement précis du traitement de gros fichiers pour l'afficher dans votre console ou votre interface.*
+
+```csharp
+var progress = new Progress<int>(lignesLues =>
+{
+    Console.Write($"\rLignes traitées : {lignesLues:N0}");
+});
+
+var options = new XlsxReadOptions<Produit>()
+    .WithProgress(progress, intervalRows: 5000); // Notification toutes les 5 000 lignes
+
+await foreach (var p in FlashXlsxSerializer.ReadAsync(flux, options))
+{
+    // Traitement fluide
+}
+```
 
 ---
 
@@ -574,7 +685,7 @@ FlashXlsx court-circuite `System.Xml.XmlReader` lors de la lecture des lignes :
 * Un fichier `.xlsx` est nativement compressé en UTF-8.
 * Plutôt que de décoder d'abord les octets UTF-8 en caractères UTF-16 (`string`), **`Utf8SheetRowReader`** travaille directement sur les tranches d'octets `ReadOnlySpan<byte>` issues du décompresseur ZIP.
 * **Vectorisation matérielle :** L'instruction vectorielle AVX2 `SearchValues<byte>` scanne les délimiteurs de balises `<` et `>` par blocs de **32 octets par cycle CPU**.
-* Les colonnes Excel (`r="C14"`) sont décodées directement depuis les octets ASCII en arithmétique entière, sans créer d'objet `string`.
+* Les coordonnées de cellules Excel (`r="C14"`) sont décodées directement depuis les octets ASCII en arithmétique entière, sans créer d'objet `string`.
 
 ### Accélération SIMD ASCII -> UTF-16
 Dans un classeur d'entreprise, plus de 80 % des données sont des chiffres (`12345.67`), des dates ISO, des booléens ou des codes alphanumériques.

@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 namespace FlashXlsx;
 
 /// <summary>
-/// Point d'entrée principal de FlashXlsx pour la lecture et l'écriture XLSX en streaming (100% Native AOT).
+/// Point d'entrée principal de FlashXlsx pour la lecture et l'écriture XLSX en streaming haute performance (100% Native AOT).
 /// </summary>
 public static class FlashXlsxSerializer
 {
@@ -58,6 +58,14 @@ public static class FlashXlsxSerializer
      // SURCHARGES PAR CHEMIN DE FICHIER (filePath)
      // =========================================================================
 
+     /// <summary>
+     /// Écrit une séquence synchrone d'éléments dans un fichier XLSX à l'emplacement spécifié.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX de destination.</param>
+     /// <param name="items">La collection d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration de l'écriture (nom d'onglet, en-têtes, styles, gestion d'erreurs).</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T>(
          string filePath,
          IEnumerable<T> items,
@@ -68,6 +76,14 @@ public static class FlashXlsxSerializer
           await WriteAsync(fs, items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit un flux asynchrone d'éléments dans un fichier XLSX à l'emplacement spécifié.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX de destination.</param>
+     /// <param name="items">Le flux asynchrone d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration de l'écriture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T>(
          string filePath,
          IAsyncEnumerable<T> items,
@@ -78,6 +94,15 @@ public static class FlashXlsxSerializer
           await WriteAsync(fs, items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit une séquence synchrone d'éléments avec un contexte personnalisé dans un fichier XLSX.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <typeparam name="TContext">Le type de contexte partagé passé aux accesseurs/formateurs.</typeparam>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX de destination.</param>
+     /// <param name="items">La collection d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration d'écriture contextuelle.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T, TContext>(
          string filePath,
          IEnumerable<T> items,
@@ -88,6 +113,15 @@ public static class FlashXlsxSerializer
           await WriteAsync(fs, items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit un flux asynchrone d'éléments avec un contexte personnalisé dans un fichier XLSX.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <typeparam name="TContext">Le type de contexte partagé passé aux accesseurs/formateurs.</typeparam>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX de destination.</param>
+     /// <param name="items">Le flux asynchrone d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration d'écriture contextuelle.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T, TContext>(
          string filePath,
          IAsyncEnumerable<T> items,
@@ -98,6 +132,13 @@ public static class FlashXlsxSerializer
           await WriteAsync(fs, items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit une séquence de dictionnaires (clé/valeur dynamique) représentant des lignes dans un fichier XLSX.
+     /// </summary>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX de destination.</param>
+     /// <param name="rows">L'ensemble des lignes représentées sous forme de paires nom de colonne / valeur.</param>
+     /// <param name="options">Options de configuration de l'écriture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteDictionaryAsync(
          string filePath,
          IEnumerable<IReadOnlyDictionary<string, XlsxValue>> rows,
@@ -108,6 +149,14 @@ public static class FlashXlsxSerializer
           await WriteDictionaryAsync(fs, rows, options, ct);
      }
 
+     /// <summary>
+     /// Lit en streaming continu les lignes d'un fichier XLSX et les désérialise sous forme d'éléments typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles instanciées à partir des lignes.</typeparam>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX à lire.</param>
+     /// <param name="options">Options de lecture (onglet sélectionné, mapping personnalisé, politique d'erreurs).</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Un flux asynchrone <see cref="IAsyncEnumerable{T}"/> d'éléments désérialisés au fil de l'eau.</returns>
      public static async IAsyncEnumerable<T> ReadAsync<T>(
          string filePath,
          XlsxReadOptions<T>? options = null,
@@ -118,6 +167,14 @@ public static class FlashXlsxSerializer
                yield return item;
      }
 
+     /// <summary>
+     /// Lit l'intégralité d'un fichier XLSX et charge toutes les lignes sous forme de liste en mémoire.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles.</typeparam>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX.</param>
+     /// <param name="options">Options de configuration de la lecture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Une <see cref="List{T}"/> contenant tous les éléments du classeur ou de l'onglet ciblé.</returns>
      public static async Task<List<T>> ReadAllAsync<T>(
          string filePath,
          XlsxReadOptions<T>? options = null,
@@ -127,6 +184,13 @@ public static class FlashXlsxSerializer
           return await ReadAllAsync(fs, options, ct);
      }
 
+     /// <summary>
+     /// Lit en streaming continu un fichier XLSX sous forme de dictionnaires dynamiques (nom de colonne / valeur typée).
+     /// </summary>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX à lire.</param>
+     /// <param name="options">Options de configuration de la lecture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Un flux asynchrone de dictionnaires représentant chaque ligne du tableau.</returns>
      public static async IAsyncEnumerable<Dictionary<string, XlsxValue>> ReadDictionaryAsync(
          string filePath,
          XlsxReadOptions? options = null,
@@ -141,6 +205,15 @@ public static class FlashXlsxSerializer
      // LECTURE MULTI-ONGLETS FUSIONNÉE (ReadAllSheetsAsync)
      // =========================================================================
 
+     /// <summary>
+     /// Parcourt et lit consécutivement les onglets d'un flux XLSX dans un flux unique d'éléments typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles.</typeparam>
+     /// <param name="stream">Le flux contenant le fichier XLSX.</param>
+     /// <param name="options">Options de lecture appliquées à chaque onglet parcouru.</param>
+     /// <param name="sheetFilter">Prédicat optionnel pour filtrer les onglets à lire (par nom, index, etc.).</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Un flux asynchrone unifié combinant les enregistrements de tous les onglets filtrés.</returns>
      public static async IAsyncEnumerable<T> ReadAllSheetsAsync<T>(
          Stream stream,
          XlsxReadOptions<T>? options = null,
@@ -158,6 +231,15 @@ public static class FlashXlsxSerializer
           }
      }
 
+     /// <summary>
+     /// Parcourt et lit consécutivement les onglets d'un fichier XLSX dans un flux unique d'éléments typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles.</typeparam>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX.</param>
+     /// <param name="options">Options de lecture appliquées à chaque onglet parcouru.</param>
+     /// <param name="sheetFilter">Prédicat optionnel pour inclure ou exclure certains onglets.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Un flux asynchrone unifié combinant les enregistrements de tous les onglets filtrés.</returns>
      public static async IAsyncEnumerable<T> ReadAllSheetsAsync<T>(
          string filePath,
          XlsxReadOptions<T>? options = null,
@@ -173,6 +255,14 @@ public static class FlashXlsxSerializer
      // LECTURE (IMPORT)
      // =========================================================================
 
+     /// <summary>
+     /// Lit en streaming continu les lignes d'un flux XLSX et les désérialise sous forme d'éléments typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles.</typeparam>
+     /// <param name="stream">Le flux d'entrée contenant le document XLSX.</param>
+     /// <param name="options">Options de lecture (onglet ciblé, mapping, etc.).</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Un flux asynchrone <see cref="IAsyncEnumerable{T}"/> produit en temps réel sans allocation intermédiaire.</returns>
      public static async IAsyncEnumerable<T> ReadAsync<T>(
          Stream stream,
          XlsxReadOptions<T>? options = null,
@@ -191,6 +281,14 @@ public static class FlashXlsxSerializer
           }
      }
 
+     /// <summary>
+     /// Lit l'intégralité d'un flux XLSX et charge toutes les lignes sous forme de liste en mémoire.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles.</typeparam>
+     /// <param name="stream">Le flux d'entrée contenant le document XLSX.</param>
+     /// <param name="options">Options de configuration de la lecture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Une <see cref="List{T}"/> contenant tous les éléments désérialisés.</returns>
      public static async ValueTask<List<T>> ReadAllAsync<T>(
          Stream stream,
          XlsxReadOptions<T>? options = null,
@@ -204,6 +302,15 @@ public static class FlashXlsxSerializer
           return results;
      }
 
+     /// <summary>
+     /// Lit en streaming continu les lignes d'un flux XLSX en injectant un contexte utilisateur spécifique.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles.</typeparam>
+     /// <typeparam name="TContext">Le type de contexte partagé injecté lors de la lecture.</typeparam>
+     /// <param name="stream">Le flux d'entrée contenant le document XLSX.</param>
+     /// <param name="options">Options de lecture contextuelle.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Un flux asynchrone <see cref="IAsyncEnumerable{T}"/> d'éléments désérialisés.</returns>
      public static async IAsyncEnumerable<T> ReadAsync<T, TContext>(
          Stream stream,
          XlsxReadOptions<T, TContext> options,
@@ -221,6 +328,15 @@ public static class FlashXlsxSerializer
           }
      }
 
+     /// <summary>
+     /// Lit l'intégralité d'un flux XLSX avec un contexte utilisateur et charge toutes les lignes sous forme de liste.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités cibles.</typeparam>
+     /// <typeparam name="TContext">Le type de contexte partagé.</typeparam>
+     /// <param name="stream">Le flux d'entrée contenant le document XLSX.</param>
+     /// <param name="options">Options de configuration de la lecture contextuelle.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Une <see cref="List{T}"/> contenant tous les éléments désérialisés.</returns>
      public static async ValueTask<List<T>> ReadAllAsync<T, TContext>(
          Stream stream,
          XlsxReadOptions<T, TContext> options,
@@ -234,6 +350,13 @@ public static class FlashXlsxSerializer
           return results;
      }
 
+     /// <summary>
+     /// Lit un flux XLSX sous forme de dictionnaires dynamiques (colonnes / valeurs scalaires <see cref="XlsxValue"/>).
+     /// </summary>
+     /// <param name="stream">Le flux d'entrée contenant le document XLSX.</param>
+     /// <param name="options">Options de configuration de la lecture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
+     /// <returns>Un flux asynchrone de dictionnaires pour chaque ligne du tableau.</returns>
      public static async IAsyncEnumerable<Dictionary<string, XlsxValue>> ReadAsDictionaryAsync(
          Stream stream,
          XlsxReadOptions? options = null,
@@ -252,6 +375,12 @@ public static class FlashXlsxSerializer
           }
      }
 
+     /// <summary>
+     /// Exécute un plan de lecture multi-onglets structuré (<see cref="XlsxReadWorkbookMap"/>) sur un classeur.
+     /// </summary>
+     /// <param name="stream">Le flux d'entrée contenant le classeur XLSX.</param>
+     /// <param name="map">La cartographie des étapes de lecture configurées pour chaque onglet.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask ReadWorkbookAsync(
          Stream stream,
          XlsxReadWorkbookMap map,
@@ -268,6 +397,14 @@ public static class FlashXlsxSerializer
      // ÉCRITURE (EXPORT)
      // =========================================================================
 
+     /// <summary>
+     /// Écrit une séquence synchrone d'éléments typés directement dans un flux de sortie XLSX.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="items">La collection d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration de l'exportation.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T>(
          Stream stream,
          IEnumerable<T> items,
@@ -278,6 +415,14 @@ public static class FlashXlsxSerializer
           await writer.WriteSheetAsync(items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit un flux asynchrone d'éléments typés directement dans un flux de sortie XLSX.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="items">Le flux asynchrone d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration de l'exportation.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T>(
          Stream stream,
          IAsyncEnumerable<T> items,
@@ -288,6 +433,15 @@ public static class FlashXlsxSerializer
           await writer.WriteSheetAsync(items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit une séquence synchrone avec un contexte utilisateur personnalisé dans un flux XLSX.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <typeparam name="TContext">Le type du contexte partagé.</typeparam>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="items">La collection d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration d'écriture contextuelle.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T, TContext>(
          Stream stream,
          IEnumerable<T> items,
@@ -298,6 +452,15 @@ public static class FlashXlsxSerializer
           await writer.WriteSheetAsync(items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit un flux asynchrone avec un contexte utilisateur personnalisé dans un flux XLSX.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <typeparam name="TContext">Le type du contexte partagé.</typeparam>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="items">Le flux asynchrone d'éléments à exporter.</param>
+     /// <param name="options">Options de configuration d'écriture contextuelle.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteAsync<T, TContext>(
          Stream stream,
          IAsyncEnumerable<T> items,
@@ -308,6 +471,13 @@ public static class FlashXlsxSerializer
           await writer.WriteSheetAsync(items, options, ct);
      }
 
+     /// <summary>
+     /// Écrit une séquence de dictionnaires (lignes dynamiques) dans un flux XLSX.
+     /// </summary>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="rows">L'ensemble des lignes sous forme de dictionnaires clé/valeur.</param>
+     /// <param name="options">Options d'écriture de l'onglet.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteDictionaryAsync(
          Stream stream,
          IEnumerable<IReadOnlyDictionary<string, XlsxValue>> rows,
@@ -318,6 +488,12 @@ public static class FlashXlsxSerializer
           await writer.WriteDictionarySheetAsync(rows, options, ct);
      }
 
+     /// <summary>
+     /// Exécute un plan d'écriture multi-onglets structuré (<see cref="XlsxWriteWorkbookMap"/>) vers un flux de sortie.
+     /// </summary>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="map">La cartographie des onglets et données à écrire.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public static async ValueTask WriteWorkbookAsync(
          Stream stream,
          XlsxWriteWorkbookMap map,
@@ -334,12 +510,22 @@ public static class FlashXlsxSerializer
      // MÉTADONNÉES LÉGÈRES (GetSheets)
      // =========================================================================
 
+     /// <summary>
+     /// Extrait rapidement la liste des onglets (nom, index, visibilité) depuis un flux XLSX sans parser les cellules.
+     /// </summary>
+     /// <param name="stream">Le flux contenant le document XLSX.</param>
+     /// <returns>Une liste en lecture seule décrivant chaque onglet trouvé dans le classeur.</returns>
      public static IReadOnlyList<XlsxSheetInfo> GetSheets(Stream stream)
      {
           using var reader = new XlsxWorkbookReader(stream, leaveOpen: true);
           return reader.Sheets;
      }
 
+     /// <summary>
+     /// Extrait rapidement la liste des onglets (nom, index, visibilité) depuis un fichier XLSX sans parser les cellules.
+     /// </summary>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX.</param>
+     /// <returns>Une liste en lecture seule décrivant chaque onglet trouvé dans le classeur.</returns>
      public static IReadOnlyList<XlsxSheetInfo> GetSheets(string filePath)
      {
           using var fs = OpenReadStream(filePath, options: null);
