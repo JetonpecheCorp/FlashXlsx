@@ -12,7 +12,12 @@
     <Description>Sérialiseur et désérialiseur XLSX haute performance en streaming, 100% compatible Native AOT grâce à un Source Generator Roslyn.</Description>
     <PackageTags>xlsx;excel;aot;source-generator;streaming;openxml</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>logoFlashXlsx.png</PackageIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\assets\logoFlashXlsx.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FlashXlsx.Abstractions\FlashXlsx.Abstractions.csproj" PrivateAssets="all" />

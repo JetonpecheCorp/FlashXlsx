@@ -1,10 +1,12 @@
-# FlashXlsx ⚡
+# FlashXlsx
+
+<p align="center">
+  <img src="assets/logoFlashXlsx.png" alt="FlashXlsx Logo" width="220" />
+</p>
 
 **FlashXlsx** est le moteur d'import/export de fichiers Excel (`.xlsx`) le plus rapide, léger et sécurisé pour l'écosystème .NET.
 
 Il a été pensé pour être **simple comme un jeu d'enfant** pour un développeur débutant, tout en offrant aux architectes et experts des **performances extrêmes** grâce à la compilation native (**Native AOT**), au streaming asynchrone et à la vectorisation matérielle (SIMD).
-
----
 
 ## 🧭 Sommaire
 
@@ -38,8 +40,6 @@ Il a été pensé pour être **simple comme un jeu d'enfant** pour un développe
    * [Source Generator Roslyn (100% Native AOT & Trimming-Safe)](#source-generator-roslyn-100-native-aot--trimming-safe)
 10. [Licence](#licence)
 
----
-
 ## Comprendre FlashXlsx en 2 minutes (Pour tous)
 
 ### 💡 L'analogie du camion et du tapis roulant
@@ -51,8 +51,6 @@ Imaginez que vous receviez un conteneur rempli de 100 000 colis :
 ### 🎯 En résumé :
 * **Débutant ?** Vous écrivez 3 lignes de C# simples et tout fonctionne sans configuration obscure.
 * **Expert / Architecte ?** Vous bénéficiez du code machine généré à la compilation, d'instructions vectorielles SIMD/AVX2, d'une compatibilité Native AOT totale et d'une allocation mémoire quasi-nulle.
-
----
 
 ## Pourquoi choisir FlashXlsx ?
 
@@ -66,8 +64,6 @@ Imaginez que vous receviez un conteneur rempli de 100 000 colis :
 | **Sécurité (injections de formules)** | À coder soi-même | À coder soi-même | **Automatique et transparente** |
 | **Nettoyage automatique devises** | Complexe (code manuel) | Complexe | **Automatique (`"1 250 €"` -> `1250m`)** |
 | **Fichiers avec mot de passe** | Crash ou erreur bizarre | Erreur ZIP incompréhensible | **Détecté proprement sans crash** |
-
----
 
 ## Benchmarks de référence (100 000 lignes)
 
