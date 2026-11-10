@@ -26,7 +26,7 @@ Il a été pensé pour être **simple comme un jeu d'enfant** pour un développe
    * [6. Importer sans planter (Gestion d'erreurs tolérante)](#6-importer-sans-planter-gestion-derreurs-tolérante)
    * [7. Détection des fichiers protégés par mot de passe](#7-détection-des-fichiers-protégés-par-mot-de-passe)
    * [8. Nettoyage magique des devises et espaces insécables](#8-nettoyage-magique-des-devises-et-espaces-insécables)
-   * [9. Lire un fichier sans connaître ses colonnes (Dictionnaires)](#9-lire-un-fichier-sans-connaître-ses-colonnes-dictionnaires)
+   * [9. Mode Dynamique sans schéma : XlsxValue & Dictionnaires (Zéro-Boxing)](#9-mode-dynamique-sans-schéma--xlsxvalue--dictionnaires-zéro-boxing)
    * [10. Gérer plusieurs onglets à la fois](#10-gérer-plusieurs-onglets-à-la-fois)
    * [11. Découvrir les onglets sans charger le fichier](#11-découvrir-les-onglets-sans-charger-le-fichier)
    * [12. Cellules fusionnées lues sans effort](#12-cellules-fusionnées-lues-sans-effort)
@@ -40,7 +40,7 @@ Il a été pensé pour être **simple comme un jeu d'enfant** pour un développe
    * [L'analogie du tapis roulant (Streaming vs DOM)](#lanalogie-du-tapis-roulant-streaming-vs-dom)
    * [Scanner vectorisé UTF-8 (`ReadOnlySpan<byte>` & AVX2)](#scanner-vectorisé-utf-8-readonlyspanbyte--avx2)
    * [Accélération SIMD ASCII -> UTF-16](#accélération-simd-ascii---utf-16)
-   * [Zéro allocation sur le tas (`ArrayPool` & structs sur pile)](#zéro-allocation-sur-le-tas-arraypool--structs-sur-pile)
+   * [Zéro allocation sur le tas (`ArrayPool`, `XlsxValue` & structs sur pile)](#zéro-allocation-sur-le-tas-arraypool-xlsxvalue--structs-sur-pile)
    * [Source Generator Roslyn (100% Native AOT & Trimming-Safe)](#source-generator-roslyn-100-native-aot--trimming-safe)
 10. [Licence](#licence)
 
@@ -68,6 +68,7 @@ Imaginez que vous receviez un conteneur rempli de 100 000 colis :
 | **Sécurité (injections de formules)** | À coder soi-même | À coder soi-même | **Automatique et transparente** |
 | **Nettoyage automatique devises** | Complexe (code manuel) | Complexe | **Automatique (`"1 250 €"` -> `1250m`)** |
 | **Fichiers avec mot de passe** | Crash ou erreur bizarre | Erreur ZIP incompréhensible | **Détecté proprement sans crash** |
+| **Mode Dictionnaire dynamique** | `Dictionary<string, object>` (Boxing lourd) | `ExpandoObject` / Boxing | **`XlsxValue` struct (100% Zéro-Boxing)** |
 
 ## Benchmarks de référence (100 000 lignes)
 
@@ -115,7 +116,7 @@ Intel Core i5-7600K CPU 3.80GHz, 1 CPU, 4 logical and 4 physical cores
 | | **Fichiers avec mot de passe** | Détecte les classeurs chiffrés dès les 8 premiers octets sans lever d'exception. |
 | | **Lignes vides & fantômes** | Ignore silencieusement les lignes vides ou remplies d'espaces inutiles. |
 | **Structure & Métadonnées** | **Multi-onglets** | Lit ou écrit plusieurs feuilles différentes dans le même fichier en un seul appel. |
-| | **Mode Dictionnaire** | Lit n'importe quel fichier Excel même si vous n'avez pas créé de classe C#. |
+| | **Mode Dictionnaire Zéro-Boxing** | Lit et écrit n'importe quel fichier sans classe C# grâce à la struct `XlsxValue`. |
 | | **Cellules fusionnées** | Recopie intelligemment la valeur du haut sur toutes les sous-lignes fusionnées. |
 | | **Vrais tableaux Excel** | Génère de superbes tableaux avec auto-filtres et lignes colorées alternées. |
 | | **Aperçu & Pagination** | Permet de lire seulement de la ligne 100 à 150 pour faire un affichage paginé. |
@@ -326,12 +327,13 @@ public class Employe
 | `[XlsxAllowedValues(...)]` | Propriété | Restreint la saisie à une liste fermée de valeurs textuelles autorisées. |
 | `[XlsxBoolean(...)]` | Propriété | Définit les textes admis pour représenter `true` et `false`. |
 | `[XlsxSplit(';')]` | Propriété | Découpe une cellule en collection (`string[]` ou `List<string>`) selon un séparateur. |
-| `[XlsxDefault(...)]` | Propriété | Assigne une valeur par défaut (`Literal`, `Now`, `Today`, `NewGuid`, etc.). |
+| `[XlsxDefault(...)]` | Propriété | Assigne une valeur par défaut statique ou dynamique (`Now`, `Today`, `NewGuid`, etc.). |
 | `[XlsxConverter(typeof(T))]` | Propriété | Branche un convertisseur sur-mesure (`IXlsxConverter`, `IXlsxRowConverter`). |
 | `[XlsxNumberFormat("...")]` | Propriété | Applique un masque numérique OpenXML natif (`#,##0.00 €`, `0.00%`). |
 | `[XlsxFormula("...")]` | Propriété | Écrit une formule Excel calculée dynamiquement. |
-| `[XlsxCase(...)]` | Propriété | Force la casse du texte (`Upper`, `Lower`, `Title`). |
+| `[XlsxCase(...)]` | Propriété | Force la transformation de la casse du texte (`Upper`, `Lower`, `Title`). |
 | `[XlsxTrim(...)]` | Propriété | Configure la stratégie de rognage des espaces sur les colonnes textuelles. |
+| `[XlsxDecimalSeparator(',')]`| Propriété | Impose un caractère séparateur décimal strict pour cette colonne. |
 
 ### 3. Vérifier les données à la volée (Validation déclarative)
 *En clair : Vous posez des barrières simples pour refuser les mauvaises saisies.*
@@ -464,17 +466,49 @@ FlashXlsx nettoie automatiquement les valeurs numériques en mémoire :
 
 Une cellule contenant `" 1 250,50 € "` sera convertie directement dans votre propriété C# `decimal` valant `1250.50m`.
 
-### 9. Lire un fichier sans connaître ses colonnes (Dictionnaires)
-*En clair : Idéal pour inspecter un fichier inconnu dont vous ne connaissez pas le schéma à l'avance.*
+### 9. Mode Dynamique sans schéma : XlsxValue & Dictionnaires (Zéro-Boxing)
+*En clair : Lire ou générer n'importe quel fichier Excel à la volée sans créer de classe C#, tout en conservant les performances d'un type valeur.*
 
+Contrairement aux solutions traditionnelles qui utilisent `Dictionary<string, object>` (ce qui alloue chaque entier, booléen ou date sur le tas par boxing), FlashXlsx utilise **`XlsxValue`** : une union discriminée allouée sur la pile (`readonly struct`), sans aucun boxing.
+
+#### A. Lecture dynamique
 ```csharp
 await foreach (Dictionary<string, XlsxValue> ligne in FlashXlsxSerializer.ReadDictionaryAsync(flux))
 {
-    // Accédez aux colonnes par leur nom
-    string client = ligne["Client"].AsString();
-    double total = ligne["Total"].AsDouble();
-    bool valide = ligne["Valide"].AsBoolean();
+    // Accesseurs zéro-boxing avec conversion automatique sûre :
+    string? client    = ligne["Client"].AsString();
+    int quantite      = ligne["Quantite"].AsInt32();
+    long id           = ligne["Identifiant"].AsInt64();
+    double total      = ligne["Total"].AsDouble();
+    decimal prix      = ligne["Prix"].AsDecimal();
+    bool valide       = ligne["Valide"].AsBoolean();
+    DateOnly dateLiv  = ligne["Livraison"].AsDateOnly();
+    TimeOnly heure    = ligne["Heure"].AsTimeOnly();
+    DateTime creeLe   = ligne["CreeLe"].AsDateTime();
+    Guid refUnique    = ligne["Guid"].AsGuid();
+
+    // Vérification de présence :
+    if (!ligne["Option"].IsEmpty) { /* ... */ }
 }
+```
+
+#### B. Écriture dynamique sans allocation
+Grâce aux opérateurs de conversion implicite de `XlsxValue`, la création de lignes dynamiques est totalement naturelle :
+```csharp
+var rows = new List<Dictionary<string, XlsxValue>>
+{
+    new()
+    {
+        ["Reference"] = "PRD-99",                      // implicit string
+        ["Prix"]      = 129.99m,                       // implicit decimal (zéro boxing)
+        ["Stock"]     = 42,                            // implicit int (zéro boxing)
+        ["Actif"]     = true,                          // implicit bool
+        ["Date"]      = new DateOnly(2026, 11, 10),    // implicit DateOnly
+        ["Id"]        = Guid.NewGuid()                 // implicit Guid
+    }
+};
+
+await FlashXlsxSerializer.WriteDictionaryAsync(flux, rows);
 ```
 
 ### 10. Gérer plusieurs onglets à la fois
@@ -691,9 +725,10 @@ FlashXlsx court-circuite `System.Xml.XmlReader` lors de la lecture des lignes :
 Dans un classeur d'entreprise, plus de 80 % des données sont des chiffres (`12345.67`), des dates ISO, des booléens ou des codes alphanumériques.
 FlashXlsx utilise `System.Text.Ascii.ToUtf16` : sur les processeurs modernes, la conversion s'effectue en une seule passe vectorielle SIMD, contournant les tables de correspondances complexes d'UTF-8.
 
-### Zéro allocation sur le tas (`ArrayPool` & structs sur pile)
+### Zéro allocation sur le tas (`ArrayPool`, `XlsxValue` & structs sur pile)
 * Les mémoires tampons de lecture (128 Ko) et les tableaux de cellules temporaires sont loués via `ArrayPool<byte>.Shared` et `ArrayPool<char>.Shared`.
 * Les rapports d'erreur `XlsxErrorContext` sont des `readonly record struct` transmis par référence (`in`). Lors d'une erreur de saisie, **aucun objet `Exception` n'est instancié**, préservant ainsi le ramasse-miettes.
+* **Le mode dynamique sans boxing (`XlsxValue`) :** En mode dictionnaire, `XlsxValue` stocke les entiers, flottants, booléens et dates sous forme de bits bruts (`long _bits`), de `decimal` ou de `Guid` continus dans une même structure de pile avec disposition mémoire compacte (`[StructLayout(LayoutKind.Auto)]`). Aucune allocation sur le tas (Gen0) n'a lieu lors de la lecture ou de l'écriture dynamique.
 
 ### Source Generator Roslyn (100% Native AOT & Trimming-Safe)
 Au moment où vous compilez votre projet (`dotnet build`), le générateur de code FlashXlsx inspecte vos classes annotées avec `[XlsxSerializable]` et génère du code C# pur :
