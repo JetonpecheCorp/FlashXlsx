@@ -1,13 +1,9 @@
-﻿using System.IO.Compression;
-using System.Xml.Linq;
-using FlashXlsx;
-using FlashXlsx.Abstractions;
+﻿using FlashXlsx.Abstractions;
 using FlashXlsx.Abstractions.Internal;
-using Xunit;
+using System.IO.Compression;
+using System.Xml.Linq;
 
 namespace FlashXlsx.Tests;
-
-// --- Modèles de test pour les nouveaux attributs ---
 
 public enum StatutStock
 {

@@ -62,7 +62,7 @@ Imaginez que vous receviez un conteneur rempli de 100 000 colis :
 | :--- | :--- | :--- | :--- |
 | **Prise en main** | Souvent verbeuse | Simple | **Ultra-simple et expressive** |
 | **Mémoire (100 000 lignes)** | ~700 à 850 Mo ⚠️ | ~260 à 1 300 Mo ⚠️ | **13 à 19 Mo (Gen1 & Gen2 = 0) 🏆** |
-| **Vitesse (100 000 lignes)** | ~2,5 secondes | ~1 seconde | **~0,13 seconde (750 000 lignes/s) 🚀** |
+| **Vitesse (100 000 lignes)** | ~2,5 secondes | ~1 seconde | **~0,13 seconde (770 000 lignes/s) 🚀** |
 | **Compatibilité Native AOT** | ❌ Impossible | ⚠️ Avertissements / Instable | **✅ 100 % AOT sans avertissement** |
 | **Données invalides dans le fichier** | Fait planter votre application | Lève des exceptions lentes | **Capture propre sans exception (`OnError`)** |
 | **Sécurité (injections de formules)** | À coder soi-même | À coder soi-même | **Automatique et transparente** |
@@ -72,27 +72,29 @@ Imaginez que vous receviez un conteneur rempli de 100 000 colis :
 
 ## Benchmarks de référence (100 000 lignes)
 
-Mesures officielles avec **BenchmarkDotNet v0.14.0** sur **.NET 10 (X64 RyuJIT AVX2)**, processeur standard 4 cœurs (Intel Core i5-7600K 3.80GHz).
+Mesures officielles avec **BenchmarkDotNet v0.14.0** sur **.NET 10 (X64 RyuJIT AVX2)**, processeur standard 4 cœurs (Intel Core i5-7600K 3.80GHz).  
 Scénario : Écriture et lecture d'un classeur de **100 000 lignes × 7 colonnes typées** (`int`, `string`, `string`, `decimal`, `double`, `DateTime`, `bool`).
 
 ```text
-BenchmarkDotNet v0.14.0, Windows 10
-Intel Core i5-7600K CPU 3.80GHz, 1 CPU, 4 logical and 4 physical cores
-.NET SDK 10.0.403, X64 RyuJIT AVX2
+BenchmarkDotNet v0.14.0, Windows 10 (10.0.19045.6466/22H2/2022Update)
+Intel Core i5-7600K CPU 3.80GHz (Kaby Lake), 1 CPU, 4 logical and 4 physical cores
+.NET SDK 10.0.403
+[Host]     : .NET 10.0.14 (10.0.1426.52326), X64 RyuJIT AVX2
+DefaultJob : .NET 10.0.14 (10.0.1426.52326), X64 RyuJIT AVX2
 ```
 
-| Opération testée | Temps moyen (`Mean`) | Vitesse relative | Mémoire allouée | Consommation RAM | Collectes Garbage Collector |
+| Opération testée | Temps moyen (`Mean`) | Vitesse relative | Mémoire allouée | Consommation RAM | Collectes Garbage Collector (Gen0 / Gen1 / Gen2) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Écriture 100k - FlashXlsx (AOT)** | **129,7 ms** | **Référence (1.00x)** | **13,49 Mo** | **Référence (1.00x)** | **500 / 500 / 500** |
-| Écriture 100k - MiniExcel | 283,0 ms | 2,18x plus lent | 265,79 Mo | 19,7x plus de RAM | 78000 / 2500 / 1500 |
-| Écriture 100k - ClosedXML | 2 420,0 ms | 18,65x plus lent | 724,80 Mo | 53,7x plus de RAM | 126000 / 18000 / 5000 |
-| **Lecture 100k - FlashXlsx (AOT)** | **132,5 ms** | **Référence (1.02x)** | **19,89 Mo** | **Référence (1.47x)** | **6500 / 0 / 0** |
-| Lecture 100k - MiniExcel | 946,3 ms | 7,29x plus lent | 857,80 Mo | 43,1x plus de RAM | 286000 / 0 / 0 |
-| Lecture 100k - ClosedXML | 1 968,5 ms | 15,17x plus lent | 835,98 Mo | 61,9x plus de RAM | 186000 / 22000 / 2000 |
+| **Écriture 100k - FlashXlsx (AOT)** | **129.4 ms** | **Référence (1.00)** | **13.49 MB** | **Référence (1.00)** | **500.0000 / 500.0000 / 500.0000** |
+| Écriture 100k - MiniExcel | 283.8 ms | 2.19x plus lent | 265.78 MB | 19.71x plus de RAM | 78000.0000 / 2500.0000 / 1500.0000 |
+| Écriture 100k - ClosedXML | 2,340.6 ms | 18.09x plus lent | 724.79 MB | 53.74x plus de RAM | 126000.0000 / 17000.0000 / 5000.0000 |
+| **Lecture 100k - FlashXlsx (AOT)** | **129.9 ms** | **Référence (1.00)** | **19.89 MB** | **Référence (1.00)** | **6500.0000 / - / -** |
+| Lecture 100k - MiniExcel | 961.3 ms | 7.43x plus lent | 1315.57 MB | 97.54x plus de RAM | 439000.0000 / - / - |
+| Lecture 100k - ClosedXML | 1,912.8 ms | 14.78x plus lent | 835.98 MB | 61.98x plus de RAM | 186000.0000 / 23000.0000 / 2000.0000 |
 
 > **Ce que révèlent ces chiffres :**
-> - **À l'écriture (129,7 ms) :** FlashXlsx génère **~770 000 lignes par seconde**. Les 13 Mo alloués correspondent presque uniquement à la taille du fichier ZIP compressé final.
-> - **À la lecture (132,5 ms) :** FlashXlsx décode **~755 000 lignes par seconde** et alloue seulement 19,89 Mo (qui correspondent aux objets C# finaux créés pour vous). Le moteur interne n'alloue quasiment aucun déchet, évitant toute pause de nettoyage mémoire (Gen1 et Gen2 restent à zéro).
+> - **À l'écriture (129,4 ms) :** FlashXlsx génère **~772 000 lignes par seconde**. Les 13,49 Mo alloués correspondent presque uniquement à la taille du fichier ZIP compressé final.
+> - **À la lecture (129,9 ms) :** FlashXlsx décode **~769 000 lignes par seconde** et alloue seulement 19,89 Mo (qui correspondent aux objets C# finaux créés pour vous). Le moteur interne n'alloue quasiment aucun déchet, évitant toute pause de nettoyage mémoire (Gen1 et Gen2 restent à zéro).
 
 ---
 
@@ -115,7 +117,7 @@ Intel Core i5-7600K CPU 3.80GHz, 1 CPU, 4 logical and 4 physical cores
 | **Tolérance aux erreurs** | **Mode Report & Continue** | Ne plante pas au premier problème : continue de lire et vous dresse la liste des erreurs. |
 | | **Fichiers avec mot de passe** | Détecte les classeurs chiffrés dès les 8 premiers octets sans lever d'exception. |
 | | **Lignes vides & fantômes** | Ignore silencieusement les lignes vides ou remplies d'espaces inutiles. |
-| **Structure & Métadonnées** | **Multi-onglets** | Lit ou écrit plusieurs feuilles différentes dans le même fichier en un seul appel. |
+| **Structure & Métadonnées** | **Multi-onglets fluides** | Lit ou écrit plusieurs feuilles en un seul appel via les builders (`AddSheet`, `MapSheet`). |
 | | **Mode Dictionnaire Zéro-Boxing** | Lit et écrit n'importe quel fichier sans classe C# grâce à la struct `XlsxValue`. |
 | | **Cellules fusionnées** | Recopie intelligemment la valeur du haut sur toutes les sous-lignes fusionnées. |
 | | **Vrais tableaux Excel** | Génère de superbes tableaux avec auto-filtres et lignes colorées alternées. |
@@ -184,15 +186,12 @@ var liste = new List<Produit>
     new() { Reference = "PRD-02", Nom = "Souris optique", Prix = 19.50m, Disponible = false, DateEntree = new DateOnly(2026, 11, 09) }
 };
 
-using var flux = File.Create("produits.xlsx");
-await FlashXlsxSerializer.WriteAsync(flux, liste);
+await FlashXlsxSerializer.WriteAsync("produits.xlsx", liste);
 ```
 
 ### Étape 3 : Lisez le fichier ligne par ligne
 ```csharp
-using var flux = File.OpenRead("produits.xlsx");
-
-await foreach (Produit p in FlashXlsxSerializer.ReadAsync<Produit>(flux))
+await foreach (Produit p in FlashXlsxSerializer.ReadAsync<Produit>("produits.xlsx"))
 {
     Console.WriteLine($"Produit : {p.Nom} - {p.Prix} € (Disponible : {p.Disponible})");
 }
@@ -394,7 +393,7 @@ public class Depense
 var monContexte = new ContexteUtilisateur(EstAdmin: false, PlafondMax: 500m);
 var options = new XlsxReadOptions<Depense, ContexteUtilisateur>(monContexte);
 
-await foreach (var d in FlashXlsxSerializer.ReadAsync(flux, options))
+await foreach (var d in FlashXlsxSerializer.ReadAsync("depenses.xlsx", options))
 {
     // Valide dynamiquement selon le profil de l'utilisateur !
 }
@@ -413,7 +412,7 @@ var options = new XlsxReadOptions<Produit>()
         ["Prix"] = ["Price", "Unit Price", "Prix HT", "Preis"]
     });
 
-var produits = await FlashXlsxSerializer.ReadAllAsync(flux, options);
+var produits = await FlashXlsxSerializer.ReadAllAsync("produits.xlsx", options);
 ```
 
 ### 6. Importer sans planter (Gestion d'erreurs tolérante)
@@ -430,7 +429,7 @@ var options = new XlsxReadOptions<Produit>()
         erreurs.Add(err);
     });
 
-await foreach (var p in FlashXlsxSerializer.ReadAsync(flux, options))
+await foreach (var p in FlashXlsxSerializer.ReadAsync("produits.xlsx", options))
 {
     // Vos données valides arrivent ici
 }
@@ -443,16 +442,25 @@ foreach (var e in erreurs)
 ```
 
 ### 7. Détection des fichiers protégés par mot de passe
-*En clair : Si un utilisateur envoie un fichier verrouillé, vous le savez tout de suite avec un message clair.*
+*En clair : Si un utilisateur envoie un fichier verrouillé, vous le savez tout de suite avec un message clair, sans lever d'exception.*
 
-Les fichiers Excel chiffrés sont des conteneurs binaires OLE2. FlashXlsx inspecte les 8 premiers octets du fichier en une fraction de milliseconde :
+Les fichiers Excel chiffrés sont des conteneurs binaires OLE2. FlashXlsx inspecte la signature binaire dès l'ouverture et notifie directement le statut d'erreur sans lever d'exception :
+
 ```csharp
-using var reader = new XlsxWorkbookReader(flux);
+XlsxCellStatus? statutErreur = null;
 
-if (reader.IsEncrypted)
+var options = new XlsxReadOptions()
+    .WithErrorMode(XlsxErrorMode.ReportAndContinue)
+    .WithErrorHandler((in XlsxErrorContext err) => statutErreur = err.Status);
+
+await FlashXlsxSerializer.ReadWorkbookAsync(
+    "fichier_protege.xlsx",
+    wb => wb.MapSheet<Produit>("Produits", out var produits),
+    options);
+
+if (statutErreur == XlsxCellStatus.EncryptedFile)
 {
     Console.WriteLine("Désolé, ce classeur est verrouillé par un mot de passe.");
-    return;
 }
 ```
 
@@ -473,7 +481,7 @@ Contrairement aux solutions traditionnelles qui utilisent `Dictionary<string, ob
 
 #### A. Lecture dynamique
 ```csharp
-await foreach (Dictionary<string, XlsxValue> ligne in FlashXlsxSerializer.ReadDictionaryAsync(flux))
+await foreach (Dictionary<string, XlsxValue> ligne in FlashXlsxSerializer.ReadDictionaryAsync("export.xlsx"))
 {
     // Accesseurs zéro-boxing avec conversion automatique sûre :
     string? client    = ligne["Client"].AsString();
@@ -508,49 +516,51 @@ var rows = new List<Dictionary<string, XlsxValue>>
     }
 };
 
-await FlashXlsxSerializer.WriteDictionaryAsync(flux, rows);
+await FlashXlsxSerializer.WriteDictionaryAsync("dynamique.xlsx", rows);
 ```
 
 ### 10. Gérer plusieurs onglets à la fois
-*En clair : Écrire ou lire un classeur complet avec ses feuilles "Clients", "Factures" et "Paramètres" en une seule fois.*
+*En clair : Écrire ou lire un classeur complet avec ses feuilles "Clients", "Commandes" et "Paramètres" via l'API fluide sans instancier manuellement de structure intermédiaire.*
 
 ```csharp
-// --- ÉCRITURE MULTI-FEUILLES ---
-var exportMap = new XlsxWriteWorkbookMap()
+// --- ÉCRITURE MULTI-FEUILLES FLUIDE ---
+await FlashXlsxSerializer.WriteWorkbookAsync("gestion.xlsx", wb => wb
     .AddSheet("Clients", listeClients)
-    .AddSheet("Commandes", listeCommandes);
+    .AddSheet("Commandes", listeCommandes)
+    .AddDictionarySheet("Configuration", lignesConfig));
 
-using (var outStream = File.Create("gestion.xlsx"))
-{
-    await FlashXlsxSerializer.WriteWorkbookAsync(outStream, exportMap);
-}
+// --- LECTURE MULTI-FEUILLES FLUIDE ---
+List<Client>? mesClients = null;
+List<Commande>? mesCommandes = null;
+List<Dictionary<string, XlsxValue>>? maConfig = null;
 
-// --- LECTURE MULTI-FEUILLES ---
-using (var inStream = File.OpenRead("gestion.xlsx"))
-{
-    var importMap = new XlsxReadWorkbookMap()
-        .MapSheet<Client>("Clients", out var mesClients)
-        .MapSheet<Commande>("Commandes", out var mesCommandes);
+await FlashXlsxSerializer.ReadWorkbookAsync("gestion.xlsx", wb => wb
+    .MapSheet<Client>("Clients", out mesClients)
+    .MapSheet<Commande>("Commandes", out mesCommandes)
+    .MapSheetAsDictionary("Configuration", out maConfig));
 
-    await FlashXlsxSerializer.ReadWorkbookAsync(inStream, importMap);
-
-    // Les variables 'mesClients' et 'mesCommandes' sont maintenant remplies !
-}
+// Lecture multi-onglets en streaming par ligne (ValueTask)
+await FlashXlsxSerializer.ReadWorkbookAsync("gestion.xlsx", wb => wb
+    .MapSheet<Commande>("Commandes", async cmd =>
+    {
+        await TraiterCommandeEnStreamingAsync(cmd);
+    }));
 ```
 
 ### 11. Découvrir les onglets sans charger le fichier
-*En clair : Afficher la liste des feuilles à un utilisateur avant qu'il ne choisisse laquelle importer.*
+*En clair : Obtenir instantanément la liste des feuilles (nom, index, visibilité) sans parser tout le fichier.*
 
 ```csharp
-using var reader = new XlsxWorkbookReader(flux);
+IReadOnlyList<XlsxSheetInfo> feuilles = FlashXlsxSerializer.GetSheets("gestion.xlsx");
 
-foreach (XlsxSheetInfo feuille in reader.Sheets)
+foreach (XlsxSheetInfo feuille in feuilles)
 {
     Console.WriteLine($"Onglet #{feuille.Index} : '{feuille.Name}' (Visible : {feuille.IsVisible})");
 }
 
-// Lire ensuite uniquement la feuille choisie :
-await foreach (var ligne in reader.ReadSheetAsync<Produit>("Produits 2026"))
+// Lire ensuite uniquement la feuille choisie via son nom ou son index :
+var options = new XlsxReadOptions<Produit>().WithSheetName("Produits 2026");
+await foreach (var ligne in FlashXlsxSerializer.ReadAsync("gestion.xlsx", options))
 {
     // ...
 }
@@ -563,7 +573,7 @@ await foreach (var ligne in reader.ReadSheetAsync<Produit>("Produits 2026"))
 var options = new XlsxReadOptions<RapportVente>()
     .WithFillMergedCells(true); // Active la propagation automatique
 
-await foreach (var ligne in FlashXlsxSerializer.ReadAsync(flux, options))
+await foreach (var ligne in FlashXlsxSerializer.ReadAsync("ventes.xlsx", options))
 {
     // 'ligne.Categorie' est automatiquement renseigné, même sur les lignes fusionnées !
 }
@@ -576,7 +586,7 @@ await foreach (var ligne in FlashXlsxSerializer.ReadAsync(flux, options))
 var options = new XlsxWriteOptions<Produit>()
     .WithExcelTable(tableName: "TableauProduits", styleName: "TableStyleMedium2", showRowStripes: true, enableAutoFilter: true);
 
-await FlashXlsxSerializer.WriteAsync(flux, liste, options);
+await FlashXlsxSerializer.WriteAsync("produits_stylises.xlsx", liste, options);
 ```
 
 ### 14. Aperçu rapide et pagination de gros fichiers
@@ -587,7 +597,7 @@ var options = new XlsxReadOptions<Produit>()
     .WithStartRow(2)  // Commence à la première ligne de données
     .WithMaxRows(20); // Lit 20 lignes et s'arrête immédiatement
 
-var apercu = await FlashXlsxSerializer.ReadAllAsync(flux, options);
+var apercu = await FlashXlsxSerializer.ReadAllAsync("gros_fichier.xlsx", options);
 ```
 
 ### 15. Bouclier automatique contre les formules pirates
@@ -669,7 +679,7 @@ var progress = new Progress<int>(lignesLues =>
 var options = new XlsxReadOptions<Produit>()
     .WithProgress(progress, intervalRows: 5000); // Notification toutes les 5 000 lignes
 
-await foreach (var p in FlashXlsxSerializer.ReadAsync(flux, options))
+await foreach (var p in FlashXlsxSerializer.ReadAsync("import_massif.xlsx", options))
 {
     // Traitement fluide
 }
@@ -679,7 +689,7 @@ await foreach (var p in FlashXlsxSerializer.ReadAsync(flux, options))
 
 ## Sous le capot : Pour les experts et passionnés d'optimisation
 
-Cette section détaille les choix d'ingénierie qui permettent à FlashXlsx d'atteindre **750 000 lignes/seconde** avec moins de 20 Mo de RAM.
+Cette section détaille les choix d'ingénierie qui permettent à FlashXlsx d'atteindre **770 000 lignes/seconde** avec moins de 20 Mo de RAM.
 
 ```text
 Flux .xlsx (ZipArchive)
@@ -689,18 +699,18 @@ Flux .xlsx (ZipArchive)
        │
        ▼  Buffer 128 Ko loué sur ArrayPool<byte>
  ┌────────────────────────────────────────────────────────┐
- │            Utf8SheetRowReader                          │
- │  • Vectorisation SIMD (SearchValues<byte> - AVX2)      │
- │  • Détection directe des balises <row>, <c>, <v>       │
+ │            Utf8SheetRowReader                          
+ │  • Vectorisation SIMD (SearchValues<byte> - AVX2)      
+ │  • Détection directe des balises <row>, <c>, <v>      │
  └─────────────────────────┬──────────────────────────────┘
                            │
-      ┌────────────────────┴─────────────────────┐
+      ┌───────────────────────┴─────────────────────┐
       ▼                                          ▼
 [ Nombres, Dates & Booléens ]           [ Textes & Chaînes ]
   Utf8Parser / Ascii.ToUtf16              Encoding.UTF8 (Tampon partagé)
   ZÉRO allocation sur le tas               HtmlDecode sans allocations inutiles
-      │                                          │
-      └────────────────────┬─────────────────────┘
+      │                                          
+      └─────────────────────────────────────────────┘
                            ▼
           [ IXlsxTypeMap<T> Compilée AOT ]
           • Affectation directe par index (switch jump-table)

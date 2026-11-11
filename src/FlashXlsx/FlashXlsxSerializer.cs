@@ -1,11 +1,6 @@
 ﻿using FlashXlsx.Abstractions;
 using FlashXlsx.Core;
-using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace FlashXlsx;
 
@@ -252,7 +247,7 @@ public static class FlashXlsxSerializer
      }
 
      // =========================================================================
-     // LECTURE (IMPORT)
+     // LECTURE MONO-ONGLET (IMPORT)
      // =========================================================================
 
      /// <summary>
@@ -375,18 +370,111 @@ public static class FlashXlsxSerializer
           }
      }
 
+     // =========================================================================
+     // ÉCRITURE MULTI-ONGLETS (API PUBLIQUE FLUIDE VIA BUILDER)
+     // =========================================================================
+
      /// <summary>
-     /// Exécute un plan de lecture multi-onglets structuré (<see cref="XlsxReadWorkbookMap"/>) sur un classeur.
+     /// Écrit plusieurs onglets dans un fichier XLSX via un configurateur fluide.
      /// </summary>
-     /// <param name="stream">Le flux d'entrée contenant le classeur XLSX.</param>
-     /// <param name="map">La cartographie des étapes de lecture configurées pour chaque onglet.</param>
-     /// <param name="ct">Jeton d'annulation de l'opération.</param>
-     public static async ValueTask ReadWorkbookAsync(
-         Stream stream,
-         XlsxReadWorkbookMap map,
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX de destination.</param>
+     /// <param name="configure">Délégué de configuration déclarant les onglets à ajouter (AddSheet, AddDictionarySheet).</param>
+     /// <param name="ct">Jeton d'annulation de l'opération asynchrone.</param>
+     /// <returns>Une tâche représentant l'écriture du classeur complet.</returns>
+     public static async ValueTask WriteWorkbookAsync(
+         string filePath,
+         Action<XlsxWriteWorkbookBuilder> configure,
          CancellationToken ct = default)
      {
+          var builder = new XlsxWriteWorkbookBuilder();
+          configure(builder);
+          await using var fs = OpenWriteStream(filePath, options: null);
+          await WriteWorkbookAsync(fs, builder.Map, ct);
+     }
+
+     /// <summary>
+     /// Écrit plusieurs onglets dans un flux XLSX via un configurateur fluide.
+     /// </summary>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="configure">Délégué de configuration déclarant les onglets à ajouter (AddSheet, AddDictionarySheet).</param>
+     /// <param name="ct">Jeton d'annulation de l'opération asynchrone.</param>
+     /// <returns>Une tâche représentant l'écriture du classeur complet.</returns>
+     public static async ValueTask WriteWorkbookAsync(
+         Stream stream,
+         Action<XlsxWriteWorkbookBuilder> configure,
+         CancellationToken ct = default)
+     {
+          var builder = new XlsxWriteWorkbookBuilder();
+          configure(builder);
+          await WriteWorkbookAsync(stream, builder.Map, ct);
+     }
+
+     // =========================================================================
+     // LECTURE MULTI-ONGLETS (API PUBLIQUE FLUIDE VIA BUILDER)
+     // =========================================================================
+
+     /// <summary>
+     /// Lit plusieurs onglets d'un fichier XLSX via un configurateur fluide.
+     /// </summary>
+     /// <param name="filePath">Le chemin d'accès au fichier XLSX source.</param>
+     /// <param name="configure">Délégué de configuration déclarant les onglets à extraire (MapSheet, MapSheetAsDictionary).</param>
+     /// <param name="options">Options globales appliquées au flux de lecture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération asynchrone.</param>
+     /// <returns>Une tâche représentant la lecture du classeur.</returns>
+     public static async ValueTask ReadWorkbookAsync(
+         string filePath,
+         Action<XlsxReadWorkbookBuilder> configure,
+         XlsxReadOptions? options = null,
+         CancellationToken ct = default)
+     {
+          await using var fs = OpenReadStream(filePath, options);
+          await ReadWorkbookAsync(fs, configure, options, ct);
+     }
+
+     /// <summary>
+     /// Lit plusieurs onglets d'un flux XLSX via un configurateur fluide.
+     /// </summary>
+     /// <param name="stream">Le flux contenant le document XLSX source.</param>
+     /// <param name="configure">Délégué de configuration déclarant les onglets à extraire (MapSheet, MapSheetAsDictionary).</param>
+     /// <param name="options">Options globales appliquées au flux de lecture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération asynchrone.</param>
+     /// <returns>Une tâche représentant la lecture du classeur.</returns>
+     public static async ValueTask ReadWorkbookAsync(
+          Stream stream,
+          Action<XlsxReadWorkbookBuilder> configure,
+          XlsxReadOptions? options = null,
+          CancellationToken ct = default)
+     {
+          var builder = new XlsxReadWorkbookBuilder();
+          configure(builder);
+          await ReadWorkbookAsync(stream, builder.Map, options, ct);
+     }
+
+     // =========================================================================
+     // MÉTHODES INTERNES (Consommées par les Builders - invisibles pour l'utilisateur)
+     // =========================================================================
+
+     internal static async ValueTask WriteWorkbookAsync(
+         Stream stream,
+         XlsxWriteWorkbookMap map,
+         CancellationToken ct = default)
+     {
+          await using var writer = new XlsxWorkbookWriter(stream, leaveOpen: true);
+          foreach (var step in map.Steps)
+          {
+               await step(writer, ct);
+          }
+     }
+
+     internal static async ValueTask ReadWorkbookAsync(
+          Stream stream,
+          XlsxReadWorkbookMap map,
+          XlsxReadOptions? options = null,
+          CancellationToken ct = default)
+     {
           using var reader = new XlsxWorkbookReader(stream, leaveOpen: true);
+          reader.NotifyIfEncrypted(options);
+
           foreach (var step in map.Steps)
           {
                await step(reader, ct);
@@ -394,7 +482,7 @@ public static class FlashXlsxSerializer
      }
 
      // =========================================================================
-     // ÉCRITURE (EXPORT)
+     // ÉCRITURE MONO-ONGLET (EXPORT)
      // =========================================================================
 
      /// <summary>
@@ -486,24 +574,6 @@ public static class FlashXlsxSerializer
      {
           await using var writer = new XlsxWorkbookWriter(stream, leaveOpen: true);
           await writer.WriteDictionarySheetAsync(rows, options, ct);
-     }
-
-     /// <summary>
-     /// Exécute un plan d'écriture multi-onglets structuré (<see cref="XlsxWriteWorkbookMap"/>) vers un flux de sortie.
-     /// </summary>
-     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
-     /// <param name="map">La cartographie des onglets et données à écrire.</param>
-     /// <param name="ct">Jeton d'annulation de l'opération.</param>
-     public static async ValueTask WriteWorkbookAsync(
-         Stream stream,
-         XlsxWriteWorkbookMap map,
-         CancellationToken ct = default)
-     {
-          await using var writer = new XlsxWorkbookWriter(stream, leaveOpen: true);
-          foreach (var step in map.Steps)
-          {
-               await step(writer, ct);
-          }
      }
 
      // =========================================================================

@@ -1,8 +1,6 @@
-﻿using System.IO.Compression;
+﻿using FlashXlsx.Abstractions;
+using System.IO.Compression;
 using System.Xml.Linq;
-using FlashXlsx;
-using FlashXlsx.Abstractions;
-using Xunit;
 
 namespace FlashXlsx.Tests;
 
@@ -114,21 +112,16 @@ public class FlashXlsxFileAndNumberFormatTests
           string tempFile = Path.Combine(Path.GetTempPath(), $"flashxlsx_multisheet_{Guid.NewGuid():N}.xlsx");
           try
           {
-               await using (var fs = File.Create(tempFile))
-               await using (var writer = new XlsxWorkbookWriter(fs))
-               {
-                    await writer.WriteSheetAsync(
-                        [new LigneTresorerie { Libelle = "Jan-1", Montant = 100m, Taux = 0.2 }],
-                        new XlsxWriteOptions<LigneTresorerie>().WithSheetName("2026-01"));
-
-                    await writer.WriteSheetAsync(
-                        [new LigneTresorerie { Libelle = "Fev-1", Montant = 200m, Taux = 0.2 }],
-                        new XlsxWriteOptions<LigneTresorerie>().WithSheetName("2026-02"));
-
-                    await writer.WriteSheetAsync(
-                        [new LigneTresorerie { Libelle = "TOTAL", Montant = 300m, Taux = 0.2 }],
-                        new XlsxWriteOptions<LigneTresorerie>().WithSheetName("Recap"));
-               }
+               await FlashXlsxSerializer.WriteWorkbookAsync(tempFile, wb => wb
+                   .AddSheet(
+                       "2026-01",
+                       new[] { new LigneTresorerie { Libelle = "Jan-1", Montant = 100m, Taux = 0.2 } })
+                   .AddSheet(
+                       "2026-02",
+                       new[] { new LigneTresorerie { Libelle = "Fev-1", Montant = 200m, Taux = 0.2 } })
+                   .AddSheet(
+                       "Recap",
+                       new[] { new LigneTresorerie { Libelle = "TOTAL", Montant = 300m, Taux = 0.2 } }));
 
                var merged = new List<LigneTresorerie>();
                await foreach (var item in FlashXlsxSerializer.ReadAllSheetsAsync<LigneTresorerie>(

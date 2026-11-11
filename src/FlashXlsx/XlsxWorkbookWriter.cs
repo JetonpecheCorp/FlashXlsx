@@ -8,9 +8,10 @@ using System.IO.Compression;
 namespace FlashXlsx;
 
 /// <summary>
-/// Écrivain multi-onglets en streaming permettant d'ajouter séquentiellement plusieurs feuilles dans un même .xlsx.
+/// Écrivain de classeur multi-onglets en streaming séquentiel (100% Native AOT).
+/// Permet d'écrire feuille par feuille dans une archive OpenXML sans accumulation mémoire.
 /// </summary>
-public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
+internal sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
 {
      private readonly ZipArchive _archive;
      private readonly List<string> _sheetNames = [];
@@ -19,11 +20,23 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
      private bool _completed;
      private readonly List<string> _customNumberFormats = [];
 
+     /// <summary>
+     /// Initialise un nouvel écrivain de classeur XLSX ciblant un flux de sortie.
+     /// </summary>
+     /// <param name="stream">Le flux de destination ouvert en écriture.</param>
+     /// <param name="leaveOpen"><see langword="true"/> pour laisser le flux ouvert après finalisation ; sinon, <see langword="false"/>.</param>
      public XlsxWorkbookWriter(Stream stream, bool leaveOpen = false)
      {
           _archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen);
      }
 
+     /// <summary>
+     /// Écrit une nouvelle feuille dans le classeur à partir d'une collection synchrone d'éléments typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="items">La collection d'éléments à inscrire.</param>
+     /// <param name="options">Options d'écriture de la feuille (nom d'onglet, en-têtes, tables, styles).</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public async ValueTask WriteSheetAsync<T>(
          IEnumerable<T> items,
          XlsxWriteOptions<T>? options = null,
@@ -132,6 +145,13 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           }
      }
 
+     /// <summary>
+     /// Écrit une nouvelle feuille dans le classeur à partir d'un flux asynchrone d'éléments typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="items">Le flux asynchrone d'éléments.</param>
+     /// <param name="options">Options de configuration de la feuille.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public async ValueTask WriteSheetAsync<T>(
          IAsyncEnumerable<T> items,
          XlsxWriteOptions<T>? options = null,
@@ -239,6 +259,14 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           }
      }
 
+     /// <summary>
+     /// Écrit une nouvelle feuille avec injection d'un contexte utilisateur partagé.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <typeparam name="TContext">Le type du contexte passé aux accesseurs et formateurs.</typeparam>
+     /// <param name="items">La collection d'éléments à inscrire.</param>
+     /// <param name="options">Options d'écriture typées avec contexte.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public async ValueTask WriteSheetAsync<T, TContext>(
          IEnumerable<T> items,
          XlsxWriteOptions<T, TContext> options,
@@ -347,6 +375,14 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           }
      }
 
+     /// <summary>
+     /// Écrit une nouvelle feuille avec injection d'un contexte à partir d'un flux asynchrone.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <typeparam name="TContext">Le type du contexte partagé.</typeparam>
+     /// <param name="items">Le flux asynchrone d'éléments.</param>
+     /// <param name="options">Options d'écriture typées avec contexte.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public async ValueTask WriteSheetAsync<T, TContext>(
          IAsyncEnumerable<T> items,
          XlsxWriteOptions<T, TContext> options,
@@ -454,6 +490,12 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           }
      }
 
+     /// <summary>
+     /// Écrit une nouvelle feuille à partir d'un ensemble de dictionnaires représentant des lignes dynamiques.
+     /// </summary>
+     /// <param name="rows">Les lignes composées de couples clé/valeur <see cref="XlsxValue"/>.</param>
+     /// <param name="options">Options d'écriture.</param>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public async ValueTask WriteDictionarySheetAsync(
          IEnumerable<IReadOnlyDictionary<string, XlsxValue>> rows,
          XlsxWriteOptions? options = null,
@@ -557,7 +599,6 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
                          _customNumberFormats.Add(fmt);
                     }
                     dict ??= new Dictionary<int, int>();
-                    // Les styles 0..4 sont réservés (0=Défaut, 1=Date, 2=DateTime, 3=Time, 4=Header)
                     dict[c] = 5 + fmtIdx;
                }
           }
@@ -639,6 +680,10 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           }
      }
 
+     /// <summary>
+     /// Finalise l'écriture de l'archive OpenXML en générant les relations, styles et métadonnées du classeur.
+     /// </summary>
+     /// <param name="ct">Jeton d'annulation de l'opération.</param>
      public async ValueTask CompleteAsync(CancellationToken ct = default)
      {
           if (_completed) return;
@@ -650,12 +695,18 @@ public sealed class XlsxWorkbookWriter : IAsyncDisposable, IDisposable
           await OpenXmlPackageHelper.WritePackageMetadataAsync(_archive, _sheetNames, _tables, _headerStyle, _customNumberFormats, ct);
      }
 
+     /// <summary>
+     /// Finalise le classeur de manière asynchrone et libère les ressources ZIP.
+     /// </summary>
      public async ValueTask DisposeAsync()
      {
           await CompleteAsync();
           _archive.Dispose();
      }
 
+     /// <summary>
+     /// Finalise le classeur de manière synchrone et libère les ressources ZIP.
+     /// </summary>
      public void Dispose()
      {
           if (!_completed)

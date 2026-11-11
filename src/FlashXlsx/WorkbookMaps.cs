@@ -1,19 +1,23 @@
 ﻿using FlashXlsx.Abstractions;
-using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace FlashXlsx;
 
 /// <summary>
-/// Plan déclaratif d'import multi-onglets (100% Native AOT, zéro boxing).
+/// Plan déclaratif d'importation multi-onglets (100% Native AOT, zéro boxing).
+/// Permet de configurer l'extraction de plusieurs feuilles au cours d'une seule passe de lecture via <see cref="FlashXlsxSerializer.ReadWorkbookAsync"/>.
 /// </summary>
-public sealed class XlsxReadWorkbookMap
+internal sealed class XlsxReadWorkbookMap
 {
      internal List<Func<XlsxWorkbookReader, CancellationToken, ValueTask>> Steps { get; } = [];
 
+     /// <summary>
+     /// Associe un onglet par son nom à une liste de résultats typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à désérialiser.</typeparam>
+     /// <param name="sheetName">Le libellé de l'onglet source dans le classeur.</param>
+     /// <param name="results">La liste de sortie qui recevra les entités lues.</param>
+     /// <param name="options">Options de lecture appliquées à cet onglet.</param>
+     /// <returns>L'instance courante pour enchaîner les mappings.</returns>
      public XlsxReadWorkbookMap MapSheet<T>(
          string sheetName,
          out List<T> results,
@@ -30,6 +34,14 @@ public sealed class XlsxReadWorkbookMap
           return this;
      }
 
+     /// <summary>
+     /// Associe un onglet par son nom à un délégué de rappel exécuté pour chaque ligne lue (streaming).
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à désérialiser.</typeparam>
+     /// <param name="sheetName">Le libellé de l'onglet source.</param>
+     /// <param name="onRowAsync">Le délégué de traitement asynchrone invoqué à chaque ligne.</param>
+     /// <param name="options">Options de lecture appliquées à cet onglet.</param>
+     /// <returns>L'instance courante pour enchaîner les mappings.</returns>
      public XlsxReadWorkbookMap MapSheet<T>(
          string sheetName,
          Func<T, ValueTask> onRowAsync,
@@ -43,6 +55,14 @@ public sealed class XlsxReadWorkbookMap
           return this;
      }
 
+     /// <summary>
+     /// Associe un onglet par son index (base 0) à une liste de résultats typés.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à désérialiser.</typeparam>
+     /// <param name="sheetIndex">L'index basé sur zéro de l'onglet.</param>
+     /// <param name="results">La liste de sortie qui recevra les entités lues.</param>
+     /// <param name="options">Options de lecture appliquées à cet onglet.</param>
+     /// <returns>L'instance courante pour enchaîner les mappings.</returns>
      public XlsxReadWorkbookMap MapSheet<T>(
          int sheetIndex,
          out List<T> results,
@@ -59,6 +79,13 @@ public sealed class XlsxReadWorkbookMap
           return this;
      }
 
+     /// <summary>
+     /// Associe un onglet par son nom à une liste de dictionnaires dynamiques.
+     /// </summary>
+     /// <param name="sheetName">Le nom de l'onglet.</param>
+     /// <param name="results">La liste recevant les dictionnaires de colonnes/valeurs.</param>
+     /// <param name="options">Options de lecture appliquées à cet onglet.</param>
+     /// <returns>L'instance courante pour enchaîner les mappings.</returns>
      public XlsxReadWorkbookMap MapSheetAsDictionary(
          string sheetName,
          out List<Dictionary<string, XlsxValue>> results,
@@ -75,6 +102,13 @@ public sealed class XlsxReadWorkbookMap
           return this;
      }
 
+     /// <summary>
+     /// Associe un onglet par son index (base 0) à une liste de dictionnaires dynamiques.
+     /// </summary>
+     /// <param name="sheetIndex">L'index de l'onglet (base 0).</param>
+     /// <param name="results">La liste recevant les dictionnaires de colonnes/valeurs.</param>
+     /// <param name="options">Options de lecture appliquées à cet onglet.</param>
+     /// <returns>L'instance courante pour enchaîner les mappings.</returns>
      public XlsxReadWorkbookMap MapSheetAsDictionary(
          int sheetIndex,
          out List<Dictionary<string, XlsxValue>> results,
@@ -93,12 +127,21 @@ public sealed class XlsxReadWorkbookMap
 }
 
 /// <summary>
-/// Plan déclaratif d'export multi-onglets (100% Native AOT).
+/// Plan déclaratif d'exportation multi-onglets (100% Native AOT).
+/// Permet de déclarer plusieurs feuilles à générer consécutivement au cours d'une seule écriture via <see cref="FlashXlsxSerializer.WriteWorkbookAsync"/>.
 /// </summary>
-public sealed class XlsxWriteWorkbookMap
+internal sealed class XlsxWriteWorkbookMap
 {
      internal List<Func<XlsxWorkbookWriter, CancellationToken, ValueTask>> Steps { get; } = [];
 
+     /// <summary>
+     /// Ajoute une feuille typée à partir d'une collection synchrone d'éléments.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="sheetName">Le nom de l'onglet à créer.</param>
+     /// <param name="items">La collection d'éléments à inscrire.</param>
+     /// <param name="options">Options de configuration de la feuille.</param>
+     /// <returns>L'instance courante pour enchaîner les ajouts.</returns>
      public XlsxWriteWorkbookMap AddSheet<T>(
          string sheetName,
          IEnumerable<T> items,
@@ -111,6 +154,14 @@ public sealed class XlsxWriteWorkbookMap
           return this;
      }
 
+     /// <summary>
+     /// Ajoute une feuille typée à partir d'un flux asynchrone d'éléments.
+     /// </summary>
+     /// <typeparam name="T">Le type des entités à sérialiser.</typeparam>
+     /// <param name="sheetName">Le nom de l'onglet à créer.</param>
+     /// <param name="items">Le flux asynchrone d'éléments à inscrire.</param>
+     /// <param name="options">Options de configuration de la feuille.</param>
+     /// <returns>L'instance courante pour enchaîner les ajouts.</returns>
      public XlsxWriteWorkbookMap AddSheet<T>(
          string sheetName,
          IAsyncEnumerable<T> items,
@@ -123,6 +174,13 @@ public sealed class XlsxWriteWorkbookMap
           return this;
      }
 
+     /// <summary>
+     /// Ajoute une feuille dynamique à partir d'une séquence de dictionnaires (clé/valeur).
+     /// </summary>
+     /// <param name="sheetName">Le nom de l'onglet à créer.</param>
+     /// <param name="rows">L'ensemble des lignes représentées sous forme de dictionnaires de colonnes/valeurs.</param>
+     /// <param name="options">Options de configuration de la feuille.</param>
+     /// <returns>L'instance courante pour enchaîner les ajouts.</returns>
      public XlsxWriteWorkbookMap AddDictionarySheet(
          string sheetName,
          IEnumerable<IReadOnlyDictionary<string, XlsxValue>> rows,

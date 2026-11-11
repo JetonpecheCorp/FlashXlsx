@@ -205,38 +205,216 @@ public class FlashXlsxEndToEndTests
      public async Task MultiSheet_WorkbookMap_ShouldImportAndExportMultipleSchemas()
      {
           var commandes = new List<CommandeTest>
-        {
-            new() { Numero = "CMD-A", Montant = 10m, EstPayee = true }
-        };
+          {
+              new() { Numero = "CMD-A", Montant = 10m, EstPayee = true }
+          };
 
           var configDynamique = new List<Dictionary<string, XlsxValue>>
-        {
-            new() { ["Cle"] = "Version", ["Valeur"] = 2 },
-            new() { ["Cle"] = "Actif", ["Valeur"] = true }
-        };
-
-          // Export multi-onglets déclaratif
-          var writeMap = new XlsxWriteWorkbookMap()
-              .AddSheet("Commandes", commandes)
-              .AddDictionarySheet("Configuration", configDynamique);
+          {
+              new() { ["Cle"] = "Version", ["Valeur"] = 2 },
+              new() { ["Cle"] = "Actif", ["Valeur"] = true }
+          };
 
           using var ms = new MemoryStream();
-          await FlashXlsxSerializer.WriteWorkbookAsync(ms, writeMap);
 
-          // Import multi-onglets déclaratif
+          await FlashXlsxSerializer.WriteWorkbookAsync(ms, wb => wb
+              .AddSheet("Commandes", commandes)
+              .AddDictionarySheet("Configuration", configDynamique));
+
           ms.Position = 0;
-          var readMap = new XlsxReadWorkbookMap()
-              .MapSheet<CommandeTest>("Commandes", out var importedCommandes)
-              .MapSheetAsDictionary("Configuration", out var importedConfig);
+          List<CommandeTest>? importedCommandes = null;
+          List<Dictionary<string, XlsxValue>>? importedConfig = null;
 
-          await FlashXlsxSerializer.ReadWorkbookAsync(ms, readMap);
+          await FlashXlsxSerializer.ReadWorkbookAsync(ms, wb => wb
+              .MapSheet("Commandes", out importedCommandes)
+              .MapSheetAsDictionary("Configuration", out importedConfig));
 
+          Assert.NotNull(importedCommandes);
           Assert.Single(importedCommandes);
           Assert.Equal("CMD-A", importedCommandes[0].Numero);
 
+          Assert.NotNull(importedConfig);
           Assert.Equal(2, importedConfig.Count);
           Assert.Equal("Version", importedConfig[0]["Cle"].AsString());
           Assert.Equal(2, importedConfig[0]["Valeur"].AsInt32());
           Assert.True(importedConfig[1]["Valeur"].AsBoolean());
+     }
+
+     [Fact]
+     public async Task MultiSheet_FluentBuilders_ActionSyntax_ShouldRoundtripSuccessfully()
+     {
+          var commandes = new List<CommandeTest>
+          {
+               new() { Numero = "CMD-B1", Montant = 120m, EstPayee = true },
+               new() { Numero = "CMD-B2", Montant = 340m, EstPayee = false }
+          };
+
+          var config = new List<Dictionary<string, XlsxValue>>
+          {
+               new() { ["Param"] = "MaxRetry", ["Val"] = 5 }
+          };
+
+          using var ms = new MemoryStream();
+
+          // 1. Écriture via la syntaxe lambda sans instanciation directe de map
+          await FlashXlsxSerializer.WriteWorkbookAsync(ms, wb => wb
+              .AddSheet("Commandes", commandes)
+              .AddDictionarySheet("Parametres", config));
+
+          // 2. Lecture via la syntaxe lambda
+          ms.Position = 0;
+          List<CommandeTest>? importedCommandes = null;
+          List<Dictionary<string, XlsxValue>>? importedConfig = null;
+
+          await FlashXlsxSerializer.ReadWorkbookAsync(ms, wb => wb
+              .MapSheet<CommandeTest>("Commandes", out importedCommandes)
+              .MapSheetAsDictionary("Parametres", out importedConfig));
+
+          Assert.NotNull(importedCommandes);
+          Assert.Equal(2, importedCommandes.Count);
+          Assert.Equal("CMD-B1", importedCommandes[0].Numero);
+
+          Assert.NotNull(importedConfig);
+          Assert.Single(importedConfig);
+          Assert.Equal(5, importedConfig[0]["Val"].AsInt32());
+     }
+
+     [Fact]
+     public async Task MultiSheet_StreamingCallback_ShouldProcessRowsOnTheFly()
+     {
+          var commandes = new List<CommandeTest>
+          {
+               new() { Numero = "STREAM-1", Montant = 15m },
+               new() { Numero = "STREAM-2", Montant = 25m }
+          };
+
+          using var ms = new MemoryStream();
+          await FlashXlsxSerializer.WriteWorkbookAsync(ms, wb => wb.AddSheet("Flux", commandes));
+
+          ms.Position = 0;
+          var numerosTraites = new List<string>();
+
+          // Lecture en streaming direct via Func<T, ValueTask>
+          await FlashXlsxSerializer.ReadWorkbookAsync(ms, wb => wb
+              .MapSheet<CommandeTest>("Flux", async cmd =>
+              {
+                   numerosTraites.Add(cmd.Numero);
+                   await ValueTask.CompletedTask;
+              }));
+
+          Assert.Equal(2, numerosTraites.Count);
+          Assert.Equal(["STREAM-1", "STREAM-2"], numerosTraites);
+     }
+
+     [Fact]
+     public async Task EncryptedWorkbook_ShouldTriggerEncryptedFileStatusWithoutThrowing()
+     {
+          // Simule un conteneur OLE2 / CFB (classeur chiffré par mot de passe)
+          byte[] ole2Header = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0xAA, 0xBB];
+          using var ms = new MemoryStream(ole2Header);
+
+          XlsxCellStatus? erreurCapturee = null;
+          var readOptions = new XlsxReadOptions()
+              .WithErrorMode(XlsxErrorMode.ReportAndContinue)
+              .WithErrorHandler((in XlsxErrorContext err) =>
+              {
+                   erreurCapturee = err.Status;
+              });
+
+          List<CommandeTest>? resultat = null;
+
+          // Doit s'exécuter silencieusement sans lever d'exception
+          await FlashXlsxSerializer.ReadWorkbookAsync(
+              ms,
+              wb => wb.MapSheet("Feuille1", out resultat),
+              readOptions);
+
+          Assert.Equal(XlsxCellStatus.EncryptedFile, erreurCapturee);
+          Assert.True(resultat is null || resultat.Count == 0);
+     }
+
+     [Fact]
+     public async Task Pagination_StartRowAndMaxRows_ShouldLimitExtractedData()
+     {
+          var data = new List<CommandeTest>
+          {
+               new() { Numero = "PAG-1", Montant = 10m },
+               new() { Numero = "PAG-2", Montant = 20m },
+               new() { Numero = "PAG-3", Montant = 30m },
+               new() { Numero = "PAG-4", Montant = 40m }
+          };
+
+          using var ms = new MemoryStream();
+          await FlashXlsxSerializer.WriteAsync(ms, data);
+
+          ms.Position = 0;
+          // Lit 2 lignes à partir de la ligne de données 3 (en-tête = ligne 1)
+          var options = new XlsxReadOptions<CommandeTest>()
+              .WithStartRow(3)
+              .WithMaxRows(2);
+
+          var resultat = await FlashXlsxSerializer.ReadAllAsync(ms, options);
+
+          Assert.Equal(2, resultat.Count);
+          Assert.Equal("PAG-2", resultat[0].Numero);
+          Assert.Equal("PAG-3", resultat[1].Numero);
+     }
+
+     [Fact]
+     public async Task CurrencyAndWhitespace_ShouldCleanAutomaticValues()
+     {
+          var rawRows = new List<Dictionary<string, XlsxValue>>
+          {
+               new()
+               {
+                    ["Numéro"] = "CMD-NETTOYAGE",
+                    ["Montant HT"] = " 1 250,50 € ", // Espaces, devise et séparateur virgule
+                    ["Date Commande"] = "2026-11-10",
+                    ["EstPayee"] = "Oui"
+               }
+          };
+
+          using var ms = new MemoryStream();
+          await FlashXlsxSerializer.WriteDictionaryAsync(ms, rawRows);
+
+          ms.Position = 0;
+          var imported = await FlashXlsxSerializer.ReadAllAsync<CommandeTest>(ms);
+
+          Assert.Single(imported);
+          Assert.Equal(1250.50m, imported[0].Montant);
+          Assert.True(imported[0].EstPayee);
+     }
+
+     [Fact]
+     public async Task ProgressReporting_ShouldNotifyRowsRead()
+     {
+          var items = new List<CommandeTest>
+          {
+               new() { Numero = "PROG-1" },
+               new() { Numero = "PROG-2" },
+               new() { Numero = "PROG-3" }
+          };
+
+          using var ms = new MemoryStream();
+          await FlashXlsxSerializer.WriteAsync(ms, items);
+
+          ms.Position = 0;
+          int notifications = 0;
+          int maxLignesRapporte = 0;
+
+          var progress = new Progress<int>(count =>
+          {
+               notifications++;
+               maxLignesRapporte = count;
+          });
+
+          var options = new XlsxReadOptions<CommandeTest>()
+              .WithProgress(progress, intervalRows: 1);
+
+          var imported = await FlashXlsxSerializer.ReadAllAsync(ms, options);
+
+          Assert.Equal(3, imported.Count);
+          Assert.True(notifications > 0);
+          Assert.Equal(3, maxLignesRapporte);
      }
 }
