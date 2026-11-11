@@ -13,22 +13,43 @@
     <PackageTags>xlsx;excel;aot;source-generator;streaming;openxml</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>logoFlashXlsx.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\assets\logoFlashXlsx.png" Pack="true" PackagePath="\" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Le XML anglais va dans le dossier satellite lib/net10.0/en/ -->
+    <None Include="docs\FlashXlsx.en.xml" Pack="true" PackagePath="lib/net10.0/en/FlashXlsx.xml" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\FlashXlsx.Abstractions\FlashXlsx.Abstractions.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\FlashXlsx.Generators\FlashXlsx.Generators.csproj"
                       OutputItemType="Analyzer"
-                      ReferenceOutputAssembly="false" />
+                      ReferenceOutputAssembly="false"
+                      GlobalPropertiesToRemove="PublishAot;IsAotCompatible" />
   </ItemGroup>
 
   <ItemGroup>
+    <!-- DLL Abstractions -->
     <None Include="..\FlashXlsx.Abstractions\bin\$(Configuration)\net10.0\FlashXlsx.Abstractions.dll"
           Pack="true" PackagePath="lib/net10.0" Visible="false" />
+
+    <!-- Doc XML Abstractions en FRANÇAIS (défaut) -->
+    <None Include="..\FlashXlsx.Abstractions\bin\$(Configuration)\net10.0\FlashXlsx.Abstractions.xml"
+          Pack="true" PackagePath="lib/net10.0" Visible="false" />
+
+    <!-- Doc XML Abstractions en ANGLAIS -->
+    <None Include="..\FlashXlsx.Abstractions\docs\FlashXlsx.Abstractions.en.xml"
+          Pack="true" PackagePath="lib/net10.0/en/FlashXlsx.Abstractions.xml" Visible="false" />
+
+    <!-- DLL Generator -->
     <None Include="..\FlashXlsx.Generators\bin\$(Configuration)\netstandard2.0\FlashXlsx.Generators.dll"
           Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
   </ItemGroup>

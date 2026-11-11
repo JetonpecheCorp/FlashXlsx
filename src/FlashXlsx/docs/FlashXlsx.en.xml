@@ -1,0 +1,217 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>FlashXlsx</name>
+    </assembly>
+    <members>
+        <!-- FlashXlsxSerializer -->
+        <member name="T:FlashXlsx.FlashXlsxSerializer">
+            <summary>
+            Main entry point for FlashXlsx high-performance streaming XLSX reading and writing (100% Native AOT compatible).
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.WriteAsync``1(System.String,System.Collections.Generic.IEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0},System.Threading.CancellationToken)">
+            <summary>
+            Writes a synchronous sequence of items to an XLSX file at the specified path.
+            </summary>
+            <typeparam name="T">The type of entities to serialize.</typeparam>
+            <param name="filePath">Target XLSX destination file path.</param>
+            <param name="items">Collection of items to export.</param>
+            <param name="options">Export configuration options (sheet name, headers, styling, error policies).</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.WriteAsync``1(System.String,System.Collections.Generic.IAsyncEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0},System.Threading.CancellationToken)">
+            <summary>
+            Writes an asynchronous stream of items to an XLSX file at the specified path.
+            </summary>
+            <typeparam name="T">The type of entities to serialize.</typeparam>
+            <param name="filePath">Target XLSX destination file path.</param>
+            <param name="items">Asynchronous stream of items to export.</param>
+            <param name="options">Export configuration options.</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.WriteAsync``2(System.String,System.Collections.Generic.IEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0,``1},System.Threading.CancellationToken)">
+            <summary>
+            Writes a synchronous sequence of items with custom context to an XLSX file.
+            </summary>
+            <typeparam name="T">The type of entities to serialize.</typeparam>
+            <typeparam name="TContext">The shared context type passed to accessors and formatters.</typeparam>
+            <param name="filePath">Target XLSX destination file path.</param>
+            <param name="items">Collection of items to export.</param>
+            <param name="options">Contextual write configuration options.</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.WriteAsync``2(System.String,System.Collections.Generic.IAsyncEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0,``1},System.Threading.CancellationToken)">
+            <summary>
+            Writes an asynchronous stream of items with custom context to an XLSX file.
+            </summary>
+            <typeparam name="T">The type of entities to serialize.</typeparam>
+            <typeparam name="TContext">The shared context type passed to accessors and formatters.</typeparam>
+            <param name="filePath">Target XLSX destination file path.</param>
+            <param name="items">Asynchronous stream of items to export.</param>
+            <param name="options">Contextual write configuration options.</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.WriteDictionaryAsync(System.String,System.Collections.Generic.IEnumerable{System.Collections.Generic.IReadOnlyDictionary{System.String,FlashXlsx.Abstractions.XlsxValue}},FlashXlsx.Abstractions.XlsxWriteOptions,System.Threading.CancellationToken)">
+            <summary>
+            Writes a sequence of dynamic key/value dictionaries representing rows to an XLSX file.
+            </summary>
+            <param name="filePath">Target XLSX destination file path.</param>
+            <param name="rows">Set of rows represented as column name / value pairs.</param>
+            <param name="options">Export configuration options.</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.ReadAsync``1(System.String,FlashXlsx.Abstractions.XlsxReadOptions{``0},System.Threading.CancellationToken)">
+            <summary>
+            Reads rows from an XLSX file as a continuous asynchronous stream and deserializes them into typed instances.
+            </summary>
+            <typeparam name="T">Target entity type deserialized from rows.</typeparam>
+            <param name="filePath">Source XLSX file path to read.</param>
+            <param name="options">Read options (selected sheet, custom mappings, error handling).</param>
+            <param name="ct">Cancellation token.</param>
+            <returns>An asynchronous stream <see cref="T:System.Collections.Generic.IAsyncEnumerable`1"/> of typed items streamed on the fly.</returns>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.ReadAllAsync``1(System.String,FlashXlsx.Abstractions.XlsxReadOptions{``0},System.Threading.CancellationToken)">
+            <summary>
+            Reads an entire XLSX file and loads all rows as an in-memory list.
+            </summary>
+            <typeparam name="T">Target entity type.</typeparam>
+            <param name="filePath">Source XLSX file path.</param>
+            <param name="options">Read configuration options.</param>
+            <param name="ct">Cancellation token.</param>
+            <returns>A list containing all items from the workbook or targeted sheet.</returns>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.ReadDictionaryAsync(System.String,FlashXlsx.Abstractions.XlsxReadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Reads an XLSX file as a continuous asynchronous stream of dynamic dictionaries (column name / typed scalar value).
+            </summary>
+            <param name="filePath">Source XLSX file path.</param>
+            <param name="options">Read configuration options.</param>
+            <param name="ct">Cancellation token.</param>
+            <returns>An asynchronous stream of dictionaries representing each row.</returns>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.ReadAllSheetsAsync``1(System.IO.Stream,FlashXlsx.Abstractions.XlsxReadOptions{``0},System.Func{FlashXlsx.Abstractions.XlsxSheetInfo,System.Boolean},System.Threading.CancellationToken)">
+            <summary>
+            Sequentially reads matching worksheets from an XLSX stream into a single unified stream of typed elements.
+            </summary>
+            <typeparam name="T">Target entity type.</typeparam>
+            <param name="stream">Input stream containing the XLSX document.</param>
+            <param name="options">Read options applied to each traversed worksheet.</param>
+            <param name="sheetFilter">Optional predicate to filter sheets to process (by name, index, etc.).</param>
+            <param name="ct">Cancellation token.</param>
+            <returns>A unified asynchronous stream combining records across all matching sheets.</returns>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.ReadAllSheetsAsync``1(System.String,FlashXlsx.Abstractions.XlsxReadOptions{``0},System.Func{FlashXlsx.Abstractions.XlsxSheetInfo,System.Boolean},System.Threading.CancellationToken)">
+            <summary>
+            Sequentially reads matching worksheets from an XLSX file into a single unified stream of typed elements.
+            </summary>
+            <typeparam name="T">Target entity type.</typeparam>
+            <param name="filePath">Source XLSX file path.</param>
+            <param name="options">Read options applied to each traversed worksheet.</param>
+            <param name="sheetFilter">Optional predicate to filter sheets to process.</param>
+            <param name="ct">Cancellation token.</param>
+            <returns>A unified asynchronous stream combining records across all matching sheets.</returns>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.WriteWorkbookAsync(System.String,System.Action{FlashXlsx.XlsxWriteWorkbookBuilder},System.Threading.CancellationToken)">
+            <summary>
+            Writes multiple worksheets into an XLSX file using a fluent workbook builder.
+            </summary>
+            <param name="filePath">Target XLSX destination file path.</param>
+            <param name="configure">Configuration delegate declaring sheets to add (AddSheet, AddDictionarySheet).</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.WriteWorkbookAsync(System.IO.Stream,System.Action{FlashXlsx.XlsxWriteWorkbookBuilder},System.Threading.CancellationToken)">
+            <summary>
+            Writes multiple worksheets into an XLSX stream using a fluent workbook builder.
+            </summary>
+            <param name="stream">Writable destination stream.</param>
+            <param name="configure">Configuration delegate declaring sheets to add (AddSheet, AddDictionarySheet).</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.ReadWorkbookAsync(System.String,System.Action{FlashXlsx.XlsxReadWorkbookBuilder},FlashXlsx.Abstractions.XlsxReadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Reads multiple worksheets from an XLSX file using a fluent workbook builder.
+            </summary>
+            <param name="filePath">Source XLSX file path.</param>
+            <param name="configure">Configuration delegate declaring sheet mappings (MapSheet, MapSheetAsDictionary).</param>
+            <param name="options">Global options applied to the reading pipeline.</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.ReadWorkbookAsync(System.IO.Stream,System.Action{FlashXlsx.XlsxReadWorkbookBuilder},FlashXlsx.Abstractions.XlsxReadOptions,System.Threading.CancellationToken)">
+            <summary>
+            Reads multiple worksheets from an XLSX stream using a fluent workbook builder.
+            </summary>
+            <param name="stream">Source XLSX document stream.</param>
+            <param name="configure">Configuration delegate declaring sheet mappings (MapSheet, MapSheetAsDictionary).</param>
+            <param name="options">Global options applied to the reading pipeline.</param>
+            <param name="ct">Cancellation token.</param>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.GetSheets(System.IO.Stream)">
+            <summary>
+            Rapidly inspects worksheet metadata (name, index, visibility) from an XLSX stream without parsing cells.
+            </summary>
+            <param name="stream">Stream containing the XLSX document.</param>
+            <returns>A read-only list describing every worksheet found in the workbook.</returns>
+        </member>
+        <member name="M:FlashXlsx.FlashXlsxSerializer.GetSheets(System.String)">
+            <summary>
+            Rapidly inspects worksheet metadata (name, index, visibility) from an XLSX file without parsing cells.
+            </summary>
+            <param name="filePath">Source XLSX file path.</param>
+            <returns>A read-only list describing every worksheet found in the workbook.</returns>
+        </member>
+        
+        <!-- Builders -->
+        <member name="T:FlashXlsx.XlsxWriteWorkbookBuilder">
+            <summary>
+            Fluent builder for configuring multi-sheet exports (100% Native AOT).
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxWriteWorkbookBuilder.AddSheet``1(System.String,System.Collections.Generic.IEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0})">
+            <summary>
+            Adds a typed worksheet from a synchronous sequence.
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxWriteWorkbookBuilder.AddSheet``1(System.String,System.Collections.Generic.IAsyncEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0})">
+            <summary>
+            Adds a typed worksheet from an asynchronous stream.
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxWriteWorkbookBuilder.AddDictionarySheet(System.String,System.Collections.Generic.IEnumerable{System.Collections.Generic.IReadOnlyDictionary{System.String,FlashXlsx.Abstractions.XlsxValue}},FlashXlsx.Abstractions.XlsxWriteOptions)">
+            <summary>
+            Adds a dynamic worksheet of dictionary rows.
+            </summary>
+        </member>
+        
+        <member name="T:FlashXlsx.XlsxReadWorkbookBuilder">
+            <summary>
+            Fluent builder for configuring multi-sheet imports (100% Native AOT, zero boxing).
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheet``1(System.String,System.Collections.Generic.List{``0}@,FlashXlsx.Abstractions.XlsxReadOptions{``0})">
+            <summary>
+            Maps a sheet by name to a strongly-typed output list.
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheet``1(System.String,System.Func{``0,System.Threading.Tasks.ValueTask},FlashXlsx.Abstractions.XlsxReadOptions{``0})">
+            <summary>
+            Maps a sheet by name to an asynchronous row callback (streaming).
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheet``1(System.Int32,System.Collections.Generic.List{``0}@,FlashXlsx.Abstractions.XlsxReadOptions{``0})">
+            <summary>
+            Maps a sheet by zero-based index to a strongly-typed output list.
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheetAsDictionary(System.String,System.Collections.Generic.List{System.Collections.Generic.Dictionary{System.String,FlashXlsx.Abstractions.XlsxValue}}@,FlashXlsx.Abstractions.XlsxReadOptions)">
+            <summary>
+            Maps a sheet by name to a dynamic dictionary list.
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheetAsDictionary(System.Int32,System.Collections.Generic.List{System.Collections.Generic.Dictionary{System.String,FlashXlsx.Abstractions.XlsxValue}}@,FlashXlsx.Abstractions.XlsxReadOptions)">
+            <summary>
+            Maps a sheet by zero-based index to a dynamic dictionary list.
+            </summary>
+        </member>
+    </members>
+</doc>

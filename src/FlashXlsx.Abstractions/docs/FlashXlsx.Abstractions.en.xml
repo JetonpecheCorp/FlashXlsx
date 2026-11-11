@@ -1,0 +1,1193 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>FlashXlsx.Abstractions</name>
+    </assembly>
+    <members>
+        <!-- ================================================================= -->
+        <!-- Errors.cs                                                         -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.Abstractions.XlsxErrorMode">
+            <summary>
+            Specifies the engine behavior when encountering data processing errors.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxErrorMode.StopOnFirstError">
+            <summary>
+            Notifies the error via OnError and immediately halts execution.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxErrorMode.ReportAndContinue">
+            <summary>
+            Notifies the error via OnError, leaves the property with its default value, and continues execution.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxCellStatus">
+            <summary>
+            Diagnostic status of a cell or structural entity during processing.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.Success">
+            <summary>
+            The cell was read or written successfully without anomalies.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.Empty">
+            <summary>
+            The cell is empty.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.RequiredMissing">
+            <summary>
+            The cell is empty or missing even though it is marked as mandatory (<see cref="T:FlashXlsx.Abstractions.XlsxRequiredAttribute"/> or <see cref="T:FlashXlsx.Abstractions.XlsxRequiredIfAttribute"/>).
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.InvalidFormat">
+            <summary>
+            The raw string could not be converted to the expected target type.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.Overflow">
+            <summary>
+            The numeric value exceeds the bounds allowed by the target type (arithmetic overflow).
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.ColumnNotFound">
+            <summary>
+            The mapped column could not be found in the worksheet header row.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.SheetNotFound">
+            <summary>
+            The worksheet requested by name or index does not exist in the workbook.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.OutOfRange">
+            <summary>
+            The numeric value falls outside the specified bounds (<see cref="T:FlashXlsx.Abstractions.XlsxRangeAttribute"/>, <see cref="T:FlashXlsx.Abstractions.XlsxMinAttribute"/>, <see cref="T:FlashXlsx.Abstractions.XlsxMaxAttribute"/>).
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.LengthInvalid">
+            <summary>
+            The string length violates length constraints (<see cref="T:FlashXlsx.Abstractions.XlsxLengthAttribute"/>).
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.PatternMismatch">
+            <summary>
+            The value does not match the required regular expression (<see cref="T:FlashXlsx.Abstractions.XlsxRegexAttribute"/>).
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.ValueNotAllowed">
+            <summary>
+            The value is not included in the allowed items list (<see cref="T:FlashXlsx.Abstractions.XlsxAllowedValuesAttribute"/>).
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.SecurityViolation">
+            <summary>
+            A potentially malicious formula or payload injection attempt was detected and intercepted.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.ConverterError">
+            <summary>
+            An unhandled exception occurred during custom converter execution (<see cref="T:FlashXlsx.Abstractions.XlsxConverterAttribute"/>).
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.WriteError">
+            <summary>
+            An I/O or stream error occurred while writing.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.CorruptedFile">
+            <summary>
+            The XLSX file is corrupted or does not conform to expected OpenXML specifications.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxCellStatus.EncryptedFile">
+            <summary>
+            The workbook is password protected or wrapped inside an encrypted binary container (OLE2/CFB).
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxErrorContext">
+            <summary>
+            Lightweight, stack-allocated context describing an error without throwing exceptions.
+            </summary>
+            <param name="RowNumber">Excel row number (1-based).</param>
+            <param name="ColumnIndex">Zero-based column index.</param>
+            <param name="ColumnLetter">Excel column letter (e.g., "A", "BC").</param>
+            <param name="ColumnName">Header column label if available.</param>
+            <param name="RawValue">Raw textual content extracted from the cell.</param>
+            <param name="Status">Diagnostic status (<see cref="T:FlashXlsx.Abstractions.XlsxCellStatus"/>).</param>
+            <param name="SheetName">Target sheet name if available.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxErrorHandler">
+            <summary>
+            Delegate invoked upon error (passed via read-only reference 'in' to avoid copying).
+            </summary>
+            <param name="error">Detailed error context.</param>
+        </member>
+
+        <!-- ================================================================= -->
+        <!-- Attributes.cs                                                     -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.Abstractions.XlsxSerializableAttribute">
+            <summary>
+            Marks a class, record, or struct for FlashXlsx Native AOT source code generation.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxNameAttribute">
+            <summary>
+            Specifies the default column header name in the Excel worksheet.
+            </summary>
+            <param name="name">Expected or generated header title for this property.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxNameAttribute.Name">
+            <summary>
+            Gets the column title bound to this property.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxIgnoreAttribute">
+            <summary>
+            Always ignores this property during reading and writing operations.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxRequiredAttribute">
+            <summary>
+            Requires the cell to contain a non-empty value when reading.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxRequiredIfAttribute">
+            <summary>
+            Requires the cell to contain a value only if the specified condition evaluates to true.
+            The target type must implement <c>IXlsxCondition&lt;T&gt;</c> or <c>IXlsxCondition&lt;T, TContext&gt;</c>.
+            </summary>
+            <param name="conditionType">CLR type evaluating the mandatory presence rule.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxRequiredIfAttribute.ConditionType">
+            <summary>
+            Gets the type evaluating the conditional rule.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxIgnoreIfAttribute">
+            <summary>
+            Ignores this property if the specified condition evaluates to true.
+            The target type must implement <c>IXlsxCondition&lt;T&gt;</c> or <c>IXlsxCondition&lt;T, TContext&gt;</c>.
+            </summary>
+            <param name="conditionType">CLR type evaluating the conditional exclusion rule.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxIgnoreIfAttribute.ConditionType">
+            <summary>
+            Gets the type evaluating the conditional rule.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxBooleanAttribute">
+            <summary>
+            Configures accepted textual representations for boolean values.
+            If only one array is specified, any missing value automatically defaults to the other state.
+            </summary>
+            <param name="trueValues">Text labels interpreted as <see langword="true"/> (e.g., "YES", "TRUE", "1").</param>
+            <param name="falseValues">Text labels interpreted as <see langword="false"/> (e.g., "NO", "FALSE", "0").</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxBooleanAttribute.TrueValues">
+            <summary>
+            Gets labels mapped to boolean <see langword="true"/>.
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxBooleanAttribute.FalseValues">
+            <summary>
+            Gets labels mapped to boolean <see langword="false"/>.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxTextCase">
+            <summary>
+            String casing conversion mode applied to textual values.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTextCase.None">
+            <summary>No casing modification.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTextCase.Upper">
+            <summary>Converts all characters to uppercase (e.g., "EXAMPLE").</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTextCase.Lower">
+            <summary>Converts all characters to lowercase (e.g., "example").</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTextCase.Title">
+            <summary>Capitalizes the first character of each word (Title Case).</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxTrimMode">
+            <summary>
+            Whitespace trimming strategy applied to string values.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTrimMode.None">
+            <summary>Preserves the string exactly as extracted with original whitespace.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTrimMode.Both">
+            <summary>Trims leading and trailing whitespace.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTrimMode.Start">
+            <summary>Trims leading whitespace only.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTrimMode.End">
+            <summary>Trims trailing whitespace only.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxTrimMode.AllWhitespace">
+            <summary>Removes all whitespace characters (including internal spaces).</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxEnumMode">
+            <summary>
+            Serialization and deserialization strategies for enumeration values.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxEnumMode.Name">
+            <summary>Uses the string member name.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxEnumMode.Value">
+            <summary>Uses the underlying numeric value.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxEnumMode.Description">
+            <summary>Uses the custom label provided via <see cref="T:FlashXlsx.Abstractions.XlsxEnumMemberAttribute"/>.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxCaseAttribute">
+            <summary>
+            Applies automatic casing transformation on the string value when reading or writing.
+            </summary>
+            <param name="textCase">Casing transformation to apply.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxCaseAttribute.Case">
+            <summary>
+            Gets the configured casing transformation.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxTrimAttribute">
+            <summary>
+            Specifies the whitespace trimming policy on text columns.
+            </summary>
+            <param name="mode">Trimming mode (defaults to leading and trailing).</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxTrimAttribute.Mode">
+            <summary>
+            Gets the configured trimming mode.
+            </summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxRangeAttribute">
+            <summary>
+            Validates that a numeric value lies within an inclusive range [min, max].
+            </summary>
+            <param name="min">Inclusive lower bound.</param>
+            <param name="max">Inclusive upper bound.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxRangeAttribute.Min">
+            <summary>Gets the minimum allowed value.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxRangeAttribute.Max">
+            <summary>Gets the maximum allowed value.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxMinAttribute">
+            <summary>
+            Validates that a numeric value is greater than or equal to a specified minimum.
+            </summary>
+            <param name="min">Minimum admissible value.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxMinAttribute.Min">
+            <summary>Gets the minimum admissible value.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxMaxAttribute">
+            <summary>
+            Validates that a numeric value is less than or equal to a specified maximum.
+            </summary>
+            <param name="max">Maximum admissible value.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxMaxAttribute.Max">
+            <summary>Gets the maximum admissible value.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxLengthAttribute">
+            <summary>
+            Validates character length constraints on string properties.
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxLengthAttribute.Min">
+            <summary>Gets the minimum required character length.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxLengthAttribute.Max">
+            <summary>Gets the maximum allowed character length.</summary>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxLengthAttribute.#ctor(System.Int32,System.Boolean)">
+            <summary>
+            Initializes an exact or maximum length constraint.
+            </summary>
+            <param name="exactOrMax">Maximum length, or exact length if <paramref name="isExact"/> is true.</param>
+            <param name="isExact">Indicates whether length must strictly match the value.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxLengthAttribute.#ctor(System.Int32,System.Int32)">
+            <summary>
+            Initializes an inclusive character length range constraint [min, max].
+            </summary>
+            <param name="min">Minimum required length.</param>
+            <param name="max">Maximum allowed length.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxRegexAttribute">
+            <summary>
+            Validates that textual content matches a specific regular expression.
+            </summary>
+            <param name="pattern">Regex pattern to test.</param>
+            <param name="ignoreCase">Indicates whether comparison is case-insensitive.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxRegexAttribute.Pattern">
+            <summary>Gets the regex pattern to evaluate.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxRegexAttribute.IgnoreCase">
+            <summary>Gets whether pattern matching is case-insensitive.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxAllowedValuesAttribute">
+            <summary>
+            Restricts allowed cell entries to a predefined whitelist of values.
+            </summary>
+            <param name="values">Set of valid admissible string values.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxAllowedValuesAttribute.Values">
+            <summary>Gets the list of allowed values.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxAllowedValuesAttribute.IgnoreCase">
+            <summary>Gets or sets whether value matching ignores casing (defaults to <see langword="true"/>).</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxColumnOrderAttribute">
+            <summary>
+            Sets the positioning order of this column during export operations.
+            </summary>
+            <param name="order">Sequential ordering index (ascending).</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxColumnOrderAttribute.Order">
+            <summary>Gets the export column position order.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxFormulaAttribute">
+            <summary>
+            Injects a native Excel formula into the cell during export.
+            </summary>
+            <param name="formula">Excel formula (without leading '=', e.g., "SUM(A{row}:B{row})").</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxFormulaAttribute.Formula">
+            <summary>Gets the configured Excel formula string.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxEnumAttribute">
+            <summary>
+            Specifies the conversion strategy applied to enumeration properties.
+            </summary>
+            <param name="mode">Mode to employ (<see cref="F:FlashXlsx.Abstractions.XlsxEnumMode.Name"/>, <see cref="F:FlashXlsx.Abstractions.XlsxEnumMode.Value"/>, or <see cref="F:FlashXlsx.Abstractions.XlsxEnumMode.Description"/>).</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxEnumAttribute.Mode">
+            <summary>Gets the configured enum serialization strategy.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxEnumMemberAttribute">
+            <summary>
+            Defines the textual label associated with an enum member when using <see cref="F:FlashXlsx.Abstractions.XlsxEnumMode.Description"/>.
+            </summary>
+            <param name="label">Exact text label read or written in the Excel sheet.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxEnumMemberAttribute.Label">
+            <summary>Gets the custom enum member label.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxDecimalSeparatorAttribute">
+            <summary>
+            Defines the expected or written decimal separator for this column (e.g., ',' or '.').
+            </summary>
+            <param name="separator">Decimal separator character.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxDecimalSeparatorAttribute.Separator">
+            <summary>Gets the configured decimal separator character.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxDefaultKind">
+            <summary>
+            Specifies the generator kind for default property values.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDefaultKind.Literal">
+            <summary>Static literal value supplied directly.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDefaultKind.Now">
+            <summary>Current local timestamp (<see cref="P:System.DateTime.Now"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDefaultKind.UtcNow">
+            <summary>Current UTC timestamp (<see cref="P:System.DateTime.UtcNow"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDefaultKind.Today">
+            <summary>Current date without time (<see cref="P:System.DateTime.Today"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDefaultKind.NewGuid">
+            <summary>New random unique identifier (<see cref="M:System.Guid.NewGuid"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDefaultKind.EmptyString">
+            <summary>Empty string (<see cref="F:System.String.Empty"/>).</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxDefaultAttribute">
+            <summary>
+            Specifies a static or dynamic default value (Now, UtcNow, Today, NewGuid)
+            when an Excel cell is empty on read (and optionally on export).
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxDefaultAttribute.Value">
+            <summary>Gets the literal default value when kind is <see cref="F:FlashXlsx.Abstractions.XlsxDefaultKind.Literal"/>.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxDefaultAttribute.Kind">
+            <summary>Gets the generator kind of the default value.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxDefaultAttribute.ApplyOnExport">
+            <summary>Gets or sets whether the default value applies during export if property is null.</summary>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxDefaultAttribute.#ctor(System.Object)">
+            <summary>Initializes a static literal default value.</summary>
+            <param name="value">Static value to assign.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxDefaultAttribute.#ctor(FlashXlsx.Abstractions.XlsxDefaultKind)">
+            <summary>Initializes a dynamic default value generator.</summary>
+            <param name="kind">Dynamic generator to employ.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxFormatAttribute">
+            <summary>
+            Specifies an exact date, time, or numeric format pattern (e.g., "dd/MM/yyyy" or "0.00").
+            </summary>
+            <param name="format">Standard or custom .NET format string.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxFormatAttribute.Format">
+            <summary>Gets the parsing or display format string.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxColumnLetterAttribute">
+            <summary>
+            Directly binds a property to an Excel column letter (e.g., "A", "D", "AA"),
+            useful when worksheets lack header rows (HasHeaderRow = false).
+            </summary>
+            <param name="columnLetter">Excel worksheet column letter.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxColumnLetterAttribute.ColumnLetter">
+            <summary>Gets the column letter assigned to this property.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxSplitAttribute">
+            <summary>
+            Reads and writes a collection (string[] or List&lt;string&gt;) packed in a single cell separated by a delimiter.
+            </summary>
+            <param name="separator">Delimiter character (defaults to semicolon ';').</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxSplitAttribute.Separator">
+            <summary>Gets the delimiter character used between collection entries.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxSplitAttribute.TrimEntries">
+            <summary>Gets or sets whether item entries are trimmed (defaults to <see langword="true"/>).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxSplitAttribute.RemoveEmptyEntries">
+            <summary>Gets or sets whether empty items are discarded (defaults to <see langword="true"/>).</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxConverterAttribute">
+            <summary>
+            Binds a custom converter (IXlsxConverter&lt;TProp&gt;, IXlsxRowConverter&lt;TRow, TProp&gt;,
+            or IXlsxRowConverter&lt;TRow, TContext, TProp&gt;) to this property.
+            </summary>
+            <param name="converterType">CLR type implementing one of FlashXlsx's converter contracts.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxConverterAttribute.ConverterType">
+            <summary>Gets the assigned custom converter type.</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxNumberFormatAttribute">
+            <summary>
+            Specifies a native OpenXML Excel number format (e.g., "#,##0.00 €", "0.00%", "00000") in xl/styles.xml.
+            The cell remains a true, calculable number in Excel.
+            </summary>
+            <param name="formatCode">Native Excel/OpenXML format mask.</param>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxNumberFormatAttribute.FormatCode">
+            <summary>Gets the native Excel number format mask.</summary>
+        </member>
+
+        <!-- ================================================================= -->
+        <!-- Conditions.cs                                                     -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.Abstractions.IXlsxCondition`1">
+            <summary>
+            Defines a domain rule dynamically evaluated on the item currently processed.
+            Used by <c>[XlsxRequiredIf]</c> to enforce conditional requirement,
+            or <c>[XlsxIgnoreIf]</c> to dynamically exclude a column on read or write.
+            </summary>
+            <typeparam name="T">Row model type (class, record, or struct).</typeparam>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxCondition`1.Evaluate(`0)">
+            <summary>
+            Evaluates whether the business condition is met for the given instance.
+            </summary>
+            <param name="item">Item instance currently being read or written.</param>
+            <returns><see langword="true"/> if the condition applies; otherwise, <see langword="false"/>.</returns>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.IXlsxCondition`2">
+            <summary>
+            Defines a contextual business condition evaluated against the item and an external execution context.
+            Allows dynamic adaptation based on application state (e.g., user permissions, runtime environment).
+            </summary>
+            <typeparam name="T">Row model type.</typeparam>
+            <typeparam name="TContext">Shared context object type provided in serialization options.</typeparam>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxCondition`2.Evaluate(`0,`1)">
+            <summary>
+            Evaluates whether the contextual condition is met.
+            </summary>
+            <param name="item">Item instance currently being read or written.</param>
+            <param name="context">External context instance injected via options.</param>
+            <returns><see langword="true"/> if condition applies; otherwise, <see langword="false"/>.</returns>
+        </member>
+
+        <!-- ================================================================= -->
+        <!-- IXlsxConverter.cs                                                 -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.Abstractions.IXlsxConverter`1">
+            <summary>
+            Stateless custom converter designed to transform raw cell text into target C# type <typeparamref name="TProperty"/> (zero-allocation) and vice versa.
+            </summary>
+            <typeparam name="TProperty">C# property type targeted by the conversion.</typeparam>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxConverter`1.TryRead(System.ReadOnlySpan{System.Char},FlashXlsx.Abstractions.XlsxReadOptions,`0@)">
+            <summary>
+            Attempts to parse and convert raw cell text into the target type.
+            </summary>
+            <param name="rawValue">Memory slice containing raw cell text (avoids string allocations).</param>
+            <param name="options">Active read options (culture, separators, tolerance).</param>
+            <param name="value">When this method returns <see langword="true"/>, contains converted value; otherwise, default value.</param>
+            <returns><see langword="true"/> if parsing succeeded; otherwise, <see langword="false"/>.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxConverter`1.Write(`0@,FlashXlsx.Abstractions.XlsxWriteOptions)">
+            <summary>
+            Converts property instance into its formatted string representation for the OpenXML cell.
+            </summary>
+            <param name="value">Property value to serialize.</param>
+            <param name="options">Active write options.</param>
+            <returns>Formatted string ready for cell injection, or <see langword="null"/> for empty cell.</returns>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.IXlsxRowConverter`2">
+            <summary>
+            Advanced row-state dependent converter.
+            Allows validating or calculating a column value using other previously read properties on <typeparamref name="TRow"/>.
+            Executes after standard independent columns have been parsed.
+            </summary>
+            <typeparam name="TRow">Object type representing the full row.</typeparam>
+            <typeparam name="TProperty">C# property type targeted by the conversion.</typeparam>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxRowConverter`2.TryRead(System.ReadOnlySpan{System.Char},`0@,FlashXlsx.Abstractions.XlsxReadOptions,`1@)">
+            <summary>
+            Attempts to parse cell value based on previously parsed row data.
+            </summary>
+            <param name="rawValue">Memory slice containing raw cell text.</param>
+            <param name="row">Row instance under construction with earlier parsed properties.</param>
+            <param name="options">Active read options.</param>
+            <param name="value">Contains parsed value on success; otherwise default.</param>
+            <returns><see langword="true"/> on success; otherwise <see langword="false"/>.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxRowConverter`2.Write(`1@,`0@,FlashXlsx.Abstractions.XlsxWriteOptions)">
+            <summary>
+            Computes or formats cell string output using the entire exported row data.
+            </summary>
+            <param name="value">Current property value.</param>
+            <param name="row">Full exported row instance.</param>
+            <param name="options">Active write options.</param>
+            <returns>Formatted cell value string, or <see langword="null"/> for empty cell.</returns>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.IXlsxRowConverter`3">
+            <summary>
+            Full contextual converter with access to row data <typeparamref name="TRow"/> and external runtime context <typeparamref name="TContext"/>.
+            </summary>
+            <typeparam name="TRow">Object type representing the full row.</typeparam>
+            <typeparam name="TContext">Shared context object type provided in serialization options.</typeparam>
+            <typeparam name="TProperty">C# property type targeted by the conversion.</typeparam>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxRowConverter`3.TryRead(System.ReadOnlySpan{System.Char},`0@,`1@,FlashXlsx.Abstractions.XlsxReadOptions{`0,`1},`2@)">
+            <summary>
+            Attempts to parse cell value utilizing row state and external context.
+            </summary>
+            <param name="rawValue">Memory slice containing raw cell text.</param>
+            <param name="row">Row instance under construction.</param>
+            <param name="context">External context instance injected on read.</param>
+            <param name="options">Active typed read options.</param>
+            <param name="value">Contains parsed value on success; otherwise default.</param>
+            <returns><see langword="true"/> on success; otherwise <see langword="false"/>.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.IXlsxRowConverter`3.Write(`2@,`0@,`1@,FlashXlsx.Abstractions.XlsxWriteOptions{`0,`1})">
+            <summary>
+            Computes or formats export cell string using row data and external context.
+            </summary>
+            <param name="value">Current property value.</param>
+            <param name="row">Full exported row instance.</param>
+            <param name="context">External context instance injected on write.</param>
+            <param name="options">Active typed write options.</param>
+            <returns>Formatted cell value string, or <see langword="null"/> for empty cell.</returns>
+        </member>
+
+        <!-- ================================================================= -->
+        <!-- XlsxValue.cs                                                      -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.Abstractions.XlsxDataType">
+            <summary>
+            Identifies primitive data types held within dynamic <see cref="T:FlashXlsx.Abstractions.XlsxValue"/> structs.
+            </summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.Empty">
+            <summary>Empty cell or uninitialized value.</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.String">
+            <summary>String (text).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.Int64">
+            <summary>64-bit signed integer (<see cref="T:System.Int64"/>) or 32-bit integer (<see cref="T:System.Int32"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.Double">
+            <summary>Double-precision floating-point number (<see cref="T:System.Double"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.Decimal">
+            <summary>High-precision decimal number (<see cref="T:System.Decimal"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.Boolean">
+            <summary>Boolean value (<see cref="T:System.Boolean"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.DateTime">
+            <summary>Combined date and time timestamp (<see cref="T:System.DateTime"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.DateOnly">
+            <summary>Calendar date without time component (<see cref="T:System.DateOnly"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.TimeOnly">
+            <summary>Time of day without date component (<see cref="T:System.TimeOnly"/>).</summary>
+        </member>
+        <member name="F:FlashXlsx.Abstractions.XlsxDataType.Guid">
+            <summary>Globally unique identifier (<see cref="T:System.Guid"/>).</summary>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxValue">
+            <summary>
+            Zero-allocation, zero-boxing discriminated union representing a typed Excel cell for dynamic dictionary workflows.
+            Stores primitives directly in contiguous bit fields or structs to eliminate GC overhead.
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxValue.Type">
+            <summary>
+            Gets the primitive data type currently stored in this value.
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxValue.IsEmpty">
+            <summary>
+            Indicates whether the cell is empty or represents a default value.
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxValue.Empty">
+            <summary>
+            Gets an instance representing an empty Excel value.
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.String)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a string to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source string or <see langword="null"/> for empty value.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.Int32)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a 32-bit integer to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source integer.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.Int64)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a 64-bit integer to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source integer.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.Double)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a double to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/> without allocations.</summary>
+            <param name="value">Source double.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.Decimal)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a decimal to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source decimal.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.Boolean)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a boolean to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source boolean.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.DateTime)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a <see cref="T:System.DateTime"/> to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source timestamp.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.DateOnly)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a <see cref="T:System.DateOnly"/> to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source date.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.TimeOnly)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a <see cref="T:System.TimeOnly"/> to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source time.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.op_Implicit(System.Guid)~FlashXlsx.Abstractions.XlsxValue">
+            <summary>Implicitly converts a <see cref="T:System.Guid"/> to <see cref="T:FlashXlsx.Abstractions.XlsxValue"/>.</summary>
+            <param name="value">Source GUID.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsString">
+            <summary>
+            Returns formatted string representation, or <see langword="null"/> if the cell is empty.
+            </summary>
+            <returns>Formatted string or <see langword="null"/>.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsInt64">
+            <summary>
+            Extracts value as a 64-bit integer (<see cref="T:System.Int64"/>). Truncates floating-point numbers.
+            </summary>
+            <returns>Value as long, or 0 if incompatible.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsInt32">
+            <summary>
+            Extracts value as a 32-bit integer (<see cref="T:System.Int32"/>).
+            </summary>
+            <returns>Value as int, or 0 if incompatible.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsDouble">
+            <summary>
+            Extracts value as a double-precision float (<see cref="T:System.Double"/>).
+            </summary>
+            <returns>Value as double, or 0.0 if incompatible.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsDecimal">
+            <summary>
+            Extracts value as high-precision decimal (<see cref="T:System.Decimal"/>).
+            </summary>
+            <returns>Value as decimal, or 0m if incompatible.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsBoolean">
+            <summary>
+            Extracts value as boolean.
+            </summary>
+            <returns><see langword="true"/> if evaluated as true; otherwise, <see langword="false"/>.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsDateTime">
+            <summary>
+            Extracts value as timestamp <see cref="T:System.DateTime"/>.
+            </summary>
+            <returns>Extracted DateTime, or <see cref="F:System.DateTime.MinValue"/> if incompatible.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsDateOnly">
+            <summary>
+            Extracts value as date <see cref="T:System.DateOnly"/>.
+            </summary>
+            <returns>Extracted DateOnly, or default value if incompatible.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsTimeOnly">
+            <summary>
+            Extracts value as time of day <see cref="T:System.TimeOnly"/>.
+            </summary>
+            <returns>Extracted TimeOnly, or default value if incompatible.</returns>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxValue.AsGuid">
+            <summary>
+            Extracts value as unique identifier <see cref="T:System.Guid"/>.
+            </summary>
+            <returns>Extracted Guid, or <see cref="F:System.Guid.Empty"/> if incompatible.</returns>
+        </member>
+
+        <!-- ================================================================= -->
+        <!-- XlsxReadOptions.cs                                                -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.Abstractions.XlsxReadOptions">
+            <summary>
+            Reading options for dynamic dictionary mode and common foundation for all XLSX reads.
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.SheetName">
+            <summary>Explicit worksheet name to read. Takes precedence over <see cref="P:FlashXlsx.Abstractions.XlsxReadOptions.SheetIndex"/> when set.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.SheetIndex">
+            <summary>Zero-based worksheet index to read (defaults to 0, the first sheet).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.HasHeaderRow">
+            <summary>Indicates whether worksheet contains a header row defining column names (enabled by default).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.HeaderRowNumber">
+            <summary>Excel row number (1-based) containing column headers (defaults to 1).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.TrimStrings">
+            <summary>Indicates whether extracted string values are automatically trimmed of leading and trailing whitespace.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.Use1904DateSystem">
+            <summary>Indicates whether workbook uses the 1904 date system (specific to legacy Mac Excel workbooks).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.StartRow">
+            <summary>Excel row number (1-based) from which data extraction begins.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.MaxRows">
+            <summary>Maximum number of data rows to process before terminating the stream.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.FillMergedCells">
+            <summary>Indicates whether merged cells duplicate their value across the entire merged range.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.AutoDetectHeaderRow">
+            <summary>Enables automatic detection of the header row within the first rows of the file.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.AutoDetectMaxRows">
+            <summary>Maximum number of rows inspected during header auto-detection (defaults to 25).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.Progress">
+            <summary>Progress reporting provider receiving the cumulative count of read data rows.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.ProgressInterval">
+            <summary>Row count interval between progress notifications (defaults to 1000).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.DecimalSeparator">
+            <summary>Expected decimal separator character. '\0' for flexible auto-detection (tolerates '.' and ','), or an explicit character.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.SkipEmptyRows">
+            <summary>Automatically ignores entirely empty rows (enabled by default).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.Culture">
+            <summary>Culture used for parsing date, time, and numeric representations (defaults to <see cref="P:System.Globalization.CultureInfo.InvariantCulture"/>).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.SecurityPolicy">
+            <summary>Security policy applied during cell reads (protection against formula and payload injections).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.ErrorMode">
+            <summary>Behavior when encountering parsing or validation errors (defaults to stopping on first error).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.OnError">
+            <summary>Handler invoked upon reading errors without throwing exceptions.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.DefaultTrueValues">
+            <summary>Custom textual labels interpreted as <see langword="true"/> for boolean properties.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.DefaultFalseValues">
+            <summary>Custom textual labels interpreted as <see langword="false"/> for boolean properties.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions.Translations">
+            <summary>Maps a canonical key name to one or more accepted Excel header aliases.</summary>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithSheet(System.String)">
+            <summary>Selects the target worksheet by name.</summary>
+            <param name="sheetName">Worksheet name to read.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithSheet(System.Int32)">
+            <summary>Selects the target worksheet by its zero-based index.</summary>
+            <param name="sheetIndex">Worksheet index (0-based).</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithHeader(System.Boolean,System.Int32)">
+            <summary>Configures the presence and row index of the header row.</summary>
+            <param name="hasHeader">Indicates whether the document contains headers.</param>
+            <param name="headerRowNumber">Excel row number (1-based) containing headers.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithCulture(System.Globalization.CultureInfo)">
+            <summary>Sets culture applied during value parsing.</summary>
+            <param name="culture">Culture to apply.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithErrorMode(FlashXlsx.Abstractions.XlsxErrorMode)">
+            <summary>Sets error handling strategy (halt vs. continue).</summary>
+            <param name="mode">Desired error handling mode.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithErrorHandler(FlashXlsx.Abstractions.XlsxErrorHandler)">
+            <summary>Registers a callback handler to intercept errors without exceptions.</summary>
+            <param name="handler">Error handling delegate.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithSecurityPolicy(FlashXlsx.Abstractions.XlsxSecurityPolicy)">
+            <summary>Sets security policy against malicious formula injections.</summary>
+            <param name="policy">Security policy to enforce.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithStartRow(System.Int32)">
+            <summary>Sets Excel row number where data reading starts.</summary>
+            <param name="startRow">Starting row number (1-based).</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithMaxRows(System.Int32)">
+            <summary>Limits the total number of data rows read.</summary>
+            <param name="maxRows">Maximum row count.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithFillMergedCells(System.Boolean)">
+            <summary>Enables or disables value replication across merged cell regions.</summary>
+            <param name="enable">Whether merged cell filling is active.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithSkipEmptyRows(System.Boolean)">
+            <summary>Configures automatic omission of completely empty rows.</summary>
+            <param name="skip">Whether empty rows should be bypassed.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithDefaultBooleanValues(System.String[],System.String[])">
+            <summary>Defines accepted textual representations for boolean values.</summary>
+            <param name="trueValues">Labels recognized as true.</param>
+            <param name="falseValues">Labels recognized as false.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithDecimalSeparator(System.Char)">
+            <summary>Forces a strict decimal separator character for floating-point numbers.</summary>
+            <param name="separator">Decimal separator character (e.g., ',' or '.').</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithAutoDetectHeaderRow(System.Boolean,System.Int32)">
+            <summary>Enables scanning leading rows to automatically locate the header row.</summary>
+            <param name="enable">Enables automatic detection.</param>
+            <param name="maxScanRows">Maximum number of rows scanned.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithProgress(System.IProgress{System.Int32},System.Int32)">
+            <summary>Attaches a progress observer to the read pipeline.</summary>
+            <param name="progress">Progress notification channel receiving rows processed count.</param>
+            <param name="intervalRows">Frequency interval in rows between events.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.Translate(System.String,System.String[])">
+            <summary>Adds alias header translations for a dynamic property key.</summary>
+            <param name="key">Canonical column or logical property name.</param>
+            <param name="excelHeaders">Accepted header labels in the worksheet.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions.WithTranslations(System.Collections.Generic.IReadOnlyDictionary{System.String,System.String})">
+            <summary>Injects a complete dictionary of header aliases.</summary>
+            <param name="translations">Dictionary mapping logical key to Excel header.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxReadOptions`1">
+            <summary>
+            Strongly-typed reading options for model <typeparamref name="T"/> (100% Native AOT).
+            </summary>
+            <typeparam name="T">Deserialized entity type.</typeparam>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions`1.Translate``1(System.Func{`0,``0},System.String[])">
+            <summary>
+            Binds a model property to one or more Excel header names without reflection.
+            </summary>
+            <typeparam name="TProp">Selected property type.</typeparam>
+            <param name="propertySelector">Lambda expression selecting the property (e.g., <c>x => x.Name</c>).</param>
+            <param name="excelHeaders">List of recognized header aliases for this property.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions`1.Translate``1(System.Func{`0,``0},System.String,System.String)">
+            <summary>
+            Binds a model property to an Excel header name by automatically capturing property name.
+            </summary>
+            <typeparam name="TProp">Property type.</typeparam>
+            <param name="propertySelector">Lambda expression selecting the property.</param>
+            <param name="firstHeader">Corresponding Excel column name.</param>
+            <param name="expression">Expression string captured by the compiler.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions`1.Translate``1(System.Func{`0,``0},System.String[],System.String)">
+            <summary>
+            Binds a model property to a list of header aliases by capturing property name.
+            </summary>
+            <typeparam name="TProp">Property type.</typeparam>
+            <param name="propertySelector">Lambda expression selecting the property.</param>
+            <param name="excelHeaders">Array of corresponding Excel header labels.</param>
+            <param name="expression">Expression string captured by the compiler.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxReadOptions`2">
+            <summary>
+            Strongly-typed reading options with external business context <typeparamref name="TContext"/>.
+            </summary>
+            <typeparam name="T">Deserialized entity type.</typeparam>
+            <typeparam name="TContext">Shared context type passed to converters and conditional rules.</typeparam>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxReadOptions`2.Context">
+            <summary>Gets or sets the shared context instance injected during read operations.</summary>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxReadOptions`2.#ctor(`1)">
+            <summary>Initializes read options with specified business context.</summary>
+            <param name="context">Runtime context instance.</param>
+        </member>
+
+        <!-- ================================================================= -->
+        <!-- XlsxWriteOptions.cs                                               -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.Abstractions.XlsxWriteOptions">
+            <summary>
+            Writing options for dynamic dictionary mode and common foundation for all XLSX exports.
+            </summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.SheetName">
+            <summary>Excel worksheet name created during export (defaults to "Sheet1").</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.WriteHeader">
+            <summary>Indicates whether header row should be emitted as first row (enabled by default).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.Culture">
+            <summary>Culture used for data formatting (defaults to <see cref="P:System.Globalization.CultureInfo.InvariantCulture"/>).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.DecimalSeparator">
+            <summary>Decimal separator used when a decimal column is formatted with text masks ([XlsxFormat]) or explicit separator.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.AutoFitColumns">
+            <summary>Calculates and automatically adjusts column widths to the maximum size of written values.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.FreezeHeader">
+            <summary>Freezes the header row so it remains visible when scrolling vertically in Excel.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.DropdownValidation">
+            <summary>Generates native Excel data validation dropdowns for enum properties or [XlsxAllowedValues] constraints.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.Progress">
+            <summary>Progress provider receiving cumulative count of data rows written.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.ProgressInterval">
+            <summary>Row count interval between progress events (defaults to 1000).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.ErrorMode">
+            <summary>Behavior on serialization or formatting error (defaults to stop on first error).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.OnError">
+            <summary>Handler invoked upon writing errors without throwing exceptions.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.HeaderStyle">
+            <summary>Visual configuration for header row (bold font, background fill, text color).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.ExcelTable">
+            <summary>Configuration to convert exported data range into a native Excel Table (ListObject).</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.DefaultTrueValues">
+            <summary>Custom textual labels written for boolean <see langword="true"/>.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.DefaultFalseValues">
+            <summary>Custom textual labels written for boolean <see langword="false"/>.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.Translations">
+            <summary>Maps a property/key name to the translated header label written into Excel.</summary>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions.SecurityPolicy">
+            <summary>Security policy applied during export (neutralization of '=' formula prefixes).</summary>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithSecurityPolicy(FlashXlsx.Abstractions.XlsxSecurityPolicy)">
+            <summary>Sets formula neutralization security policy.</summary>
+            <param name="policy">Security policy to apply.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithSheetName(System.String)">
+            <summary>Sets the name of the generated Excel worksheet.</summary>
+            <param name="sheetName">Worksheet name.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithHeader(System.Boolean)">
+            <summary>Enables or disables header row generation.</summary>
+            <param name="writeHeader">Whether to emit headers.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithCulture(System.Globalization.CultureInfo)">
+            <summary>Sets culture applied during formatting.</summary>
+            <param name="culture">Culture to apply.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithErrorMode(FlashXlsx.Abstractions.XlsxErrorMode)">
+            <summary>Sets error handling strategy (halt vs. continue).</summary>
+            <param name="mode">Desired error handling mode.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithErrorHandler(FlashXlsx.Abstractions.XlsxErrorHandler)">
+            <summary>Registers a callback handler to intercept write errors without exceptions.</summary>
+            <param name="handler">Error handling delegate.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithProgress(System.IProgress{System.Int32},System.Int32)">
+            <summary>Attaches a progress observer to the write pipeline.</summary>
+            <param name="progress">Progress notification channel receiving written rows count.</param>
+            <param name="intervalRows">Frequency interval in rows between events.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithDefaultBooleanValues(System.String[],System.String[])">
+            <summary>Defines custom textual labels written for boolean values.</summary>
+            <param name="trueValues">Labels used for true.</param>
+            <param name="falseValues">Labels used for false.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithDecimalSeparator(System.Char)">
+            <summary>Sets explicit decimal separator applied when formatting numbers as text.</summary>
+            <param name="separator">Decimal separator character (e.g., ',' or '.').</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithAutoFitColumns(System.Boolean)">
+            <summary>Enables or disables automatic column width adjustment based on content.</summary>
+            <param name="autoFit">Whether auto-fitting is active.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithHeaderStyle(System.Boolean,System.String,System.String)">
+            <summary>Customizes visual styling applied to header cells.</summary>
+            <param name="bold">Enables bold text.</param>
+            <param name="backgroundHex">RGB hex background color code (e.g., "F2F2F2").</param>
+            <param name="textHex">RGB hex text color code (e.g., "000000").</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithExcelTable(System.String,System.String,System.Boolean,System.Boolean)">
+            <summary>Encloses the data range in a native Excel Table with styles and auto-filters.</summary>
+            <param name="tableName">Unique table name (auto-generated if null).</param>
+            <param name="styleName">Predefined Excel style name (defaults to "TableStyleMedium2").</param>
+            <param name="showRowStripes">Enables alternating row colors.</param>
+            <param name="enableAutoFilter">Enables auto-filter dropdown arrows on headers.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithFreezeHeader(System.Boolean)">
+            <summary>Enables or disables freezing the header row when scrolling.</summary>
+            <param name="freeze">Whether header row should be frozen.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithDropdownValidation(System.Boolean)">
+            <summary>Enables or disables automatic generation of Excel dropdown validation lists.</summary>
+            <param name="enable">Whether dropdown validations should be injected.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.Translate(System.String,System.String)">
+            <summary>Maps a canonical key name to a custom exported header label.</summary>
+            <param name="key">Logical key name.</param>
+            <param name="excelHeader">Header label written into cell.</param>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions.WithTranslations(System.Collections.Generic.IReadOnlyDictionary{System.String,System.String})">
+            <summary>Injects a set of preconfigured header translations.</summary>
+            <param name="translations">Dictionary mapping logical key to exported header name.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxWriteOptions`1">
+            <summary>
+            Strongly-typed writing options for model <typeparamref name="T"/> (100% Native AOT).
+            </summary>
+            <typeparam name="T">Serialized entity type.</typeparam>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions`1.Translate``1(System.Func{`0,``0},System.String,System.String)">
+            <summary>
+            Binds a model property to a custom exported column header without reflection.
+            </summary>
+            <typeparam name="TProp">Selected property type.</typeparam>
+            <param name="propertySelector">Lambda expression selecting the property.</param>
+            <param name="excelHeader">Column label written into Excel.</param>
+            <param name="expression">Expression string captured by the compiler.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxWriteOptions`2">
+            <summary>
+            Strongly-typed writing options with external business context <typeparamref name="TContext"/>.
+            </summary>
+            <typeparam name="T">Serialized entity type.</typeparam>
+            <typeparam name="TContext">Shared context object type passed to converters and accessors.</typeparam>
+        </member>
+        <member name="P:FlashXlsx.Abstractions.XlsxWriteOptions`2.Context">
+            <summary>Gets or sets the shared context instance injected during export.</summary>
+        </member>
+        <member name="M:FlashXlsx.Abstractions.XlsxWriteOptions`2.#ctor(`1)">
+            <summary>Initializes write options with specified business context.</summary>
+            <param name="context">Runtime context instance.</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxHeaderStyle">
+            <summary>
+            Visual formatting settings applied to header row cells.
+            </summary>
+            <param name="Bold">Indicates whether header text is displayed in bold.</param>
+            <param name="BackgroundHex">RGB hex background fill color code (e.g., "F2F2F2").</param>
+            <param name="TextHex">RGB hex text color code (e.g., "000000").</param>
+        </member>
+
+        <member name="T:FlashXlsx.Abstractions.XlsxTableOptions">
+            <summary>
+            Configuration for a native OpenXML Excel Table (ListObject).
+            </summary>
+            <param name="TableName">Unique table name in Excel (without spaces, unique within workbook).</param>
+            <param name="StyleName">Predefined Excel table style name (e.g., "TableStyleMedium2", "TableStyleLight1").</param>
+            <param name="ShowRowStripes">Enables alternating background shading on alternating rows.</param>
+            <param name="EnableAutoFilter">Displays dropdown filter/sort arrows on header columns.</param>
+        </member>
+    </members>
+</doc>
