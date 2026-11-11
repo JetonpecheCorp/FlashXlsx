@@ -8,14 +8,25 @@
 
     <PackageId>FlashXlsx</PackageId>
     <Version>1.0.0</Version>
-    <Authors>Nicolas</Authors>
-    <Description>Sérialiseur et désérialiseur XLSX haute performance en streaming, 100% compatible Native AOT grâce à un Source Generator Roslyn.</Description>
-    <PackageTags>xlsx;excel;aot;source-generator;streaming;openxml</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>Jetonpeche</Authors>
+    <Description>Ultra-fast, lightweight streaming XLSX engine for .NET 10. Built for extreme throughput and minimal memory footprint, with zero-allocation dynamic records and 100% Native AOT compatibility via Roslyn Source Generators.</Description>    
+    <PackageTags>xlsx;excel;aot;source-generator;streaming;openxml;performance;high-performance</PackageTags>    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageIcon>logoFlashXlsx.png</PackageIcon>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>$(NoWarn);1591</NoWarn>
+
+    <!-- Liens vers le repo GitHub -->
+    <PackageProjectUrl>https://github.com/JetonpecheCorp/FlashXlsx</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/JetonpecheCorp/FlashXlsx</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReleaseNotes>Initial 1.0.0 release: high-throughput streaming engine, Roslyn source generator, zero-boxing dynamic dictionary support (XlsxValue), fluent multi-sheet builders, and instant OLE2 encryption detection.</PackageReleaseNotes>
+
+        <!-- Pour le débogage distant -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
