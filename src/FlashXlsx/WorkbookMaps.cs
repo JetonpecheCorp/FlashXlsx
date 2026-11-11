@@ -4,7 +4,7 @@ namespace FlashXlsx;
 
 /// <summary>
 /// Plan déclaratif d'importation multi-onglets (100% Native AOT, zéro boxing).
-/// Permet de configurer l'extraction de plusieurs feuilles au cours d'une seule passe de lecture via <see cref="FlashXlsxSerializer.ReadWorkbookAsync"/>.
+/// Permet de configurer l'extraction de plusieurs feuilles au cours d'une seule passe de lecture via <see cref="FlashXlsxSerializer.ReadWorkbookAsync(string, Action{XlsxReadWorkbookBuilder}, FlashXlsx.Abstractions.XlsxReadOptions?, System.Threading.CancellationToken)"/>.
 /// </summary>
 internal sealed class XlsxReadWorkbookMap
 {
@@ -128,7 +128,7 @@ internal sealed class XlsxReadWorkbookMap
 
 /// <summary>
 /// Plan déclaratif d'exportation multi-onglets (100% Native AOT).
-/// Permet de déclarer plusieurs feuilles à générer consécutivement au cours d'une seule écriture via <see cref="FlashXlsxSerializer.WriteWorkbookAsync"/>.
+/// Permet de déclarer plusieurs feuilles à générer consécutivement au cours d'une seule écriture via <see cref="FlashXlsxSerializer.WriteWorkbookAsync(string, Action{XlsxWriteWorkbookBuilder}, System.Threading.CancellationToken)"/>.
 /// </summary>
 internal sealed class XlsxWriteWorkbookMap
 {

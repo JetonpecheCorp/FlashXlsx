@@ -213,5 +213,100 @@
             Maps a sheet by zero-based index to a dynamic dictionary list.
             </summary>
         </member>
+
+        <!-- ================================================================= -->
+        <!-- XlsxWriteWorkbookBuilder                                          -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.XlsxWriteWorkbookBuilder">
+            <summary>
+            Fluent builder for configuring multi-sheet workbook export (100% Native AOT).
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxWriteWorkbookBuilder.AddSheet``1(System.String,System.Collections.Generic.IEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0})">
+            <summary>
+            Adds a strongly-typed worksheet from a synchronous sequence.
+            </summary>
+            <typeparam name="T">Type of entities serialized in the sheet.</typeparam>
+            <param name="sheetName">Worksheet name to create in Excel.</param>
+            <param name="items">Collection of items to export.</param>
+            <param name="options">Export options specific to this worksheet.</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
+        <member name="M:FlashXlsx.XlsxWriteWorkbookBuilder.AddSheet``1(System.String,System.Collections.Generic.IAsyncEnumerable{``0},FlashXlsx.Abstractions.XlsxWriteOptions{``0})">
+            <summary>
+            Adds a strongly-typed worksheet from an asynchronous stream (streaming).
+            </summary>
+            <typeparam name="T">Type of entities serialized in the sheet.</typeparam>
+            <param name="sheetName">Worksheet name to create in Excel.</param>
+            <param name="items">Asynchronous stream of items to export on the fly.</param>
+            <param name="options">Export options specific to this worksheet.</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
+        <member name="M:FlashXlsx.XlsxWriteWorkbookBuilder.AddDictionarySheet(System.String,System.Collections.Generic.IEnumerable{System.Collections.Generic.IReadOnlyDictionary{System.String,FlashXlsx.Abstractions.XlsxValue}},FlashXlsx.Abstractions.XlsxWriteOptions)">
+            <summary>
+            Adds a dynamic schema-less worksheet composed of column/value dictionaries (zero-boxing).
+            </summary>
+            <param name="sheetName">Worksheet name to create in Excel.</param>
+            <param name="rows">Sequence of rows represented as column / scalar value dictionaries.</param>
+            <param name="options">Export options applicable to this worksheet.</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
+
+        <!-- ================================================================= -->
+        <!-- XlsxReadWorkbookBuilder                                           -->
+        <!-- ================================================================= -->
+        <member name="T:FlashXlsx.XlsxReadWorkbookBuilder">
+            <summary>
+            Fluent builder for configuring multi-sheet workbook import (100% Native AOT, zero boxing).
+            </summary>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheet``1(System.String,System.Collections.Generic.List{``0}@,FlashXlsx.Abstractions.XlsxReadOptions{``0})">
+            <summary>
+            Maps a worksheet specified by name to a strongly-typed output list.
+            </summary>
+            <typeparam name="T">Target entity type deserialized for this sheet.</typeparam>
+            <param name="sheetName">Exact sheet name to extract.</param>
+            <param name="results">List receiving deserialized instances.</param>
+            <param name="options">Worksheet-specific read options (headers, aliases, error policies).</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheet``1(System.String,System.Func{``0,System.Threading.Tasks.ValueTask},FlashXlsx.Abstractions.XlsxReadOptions{``0})">
+            <summary>
+            Maps a worksheet specified by name to an asynchronous callback executed per row (streaming).
+            </summary>
+            <typeparam name="T">Target entity type deserialized for this sheet.</typeparam>
+            <param name="sheetName">Exact sheet name to read.</param>
+            <param name="onRowAsync">Asynchronous callback delegate processing each read row.</param>
+            <param name="options">Worksheet-specific read options.</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheet``1(System.Int32,System.Collections.Generic.List{``0}@,FlashXlsx.Abstractions.XlsxReadOptions{``0})">
+            <summary>
+            Maps a worksheet specified by its zero-based index to a strongly-typed output list.
+            </summary>
+            <typeparam name="T">Target entity type deserialized for this sheet.</typeparam>
+            <param name="sheetIndex">Zero-based index of the sheet to extract.</param>
+            <param name="results">List receiving deserialized instances.</param>
+            <param name="options">Worksheet-specific read options.</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheetAsDictionary(System.String,System.Collections.Generic.List{System.Collections.Generic.Dictionary{System.String,FlashXlsx.Abstractions.XlsxValue}}@,FlashXlsx.Abstractions.XlsxReadOptions)">
+            <summary>
+            Maps a worksheet specified by name to a dynamic dictionary list (column name / zero-boxing scalar values).
+            </summary>
+            <param name="sheetName">Exact sheet name to extract.</param>
+            <param name="results">List receiving rows as dynamic dictionaries.</param>
+            <param name="options">Worksheet-specific read options.</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
+        <member name="M:FlashXlsx.XlsxReadWorkbookBuilder.MapSheetAsDictionary(System.Int32,System.Collections.Generic.List{System.Collections.Generic.Dictionary{System.String,FlashXlsx.Abstractions.XlsxValue}}@,FlashXlsx.Abstractions.XlsxReadOptions)">
+            <summary>
+            Maps a worksheet specified by its zero-based index to a dynamic dictionary list.
+            </summary>
+            <param name="sheetIndex">Zero-based index of the sheet to extract.</param>
+            <param name="results">List receiving rows as dynamic dictionaries.</param>
+            <param name="options">Worksheet-specific read options.</param>
+            <returns>The builder instance for fluent chaining.</returns>
+        </member>
     </members>
 </doc>
