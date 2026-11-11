@@ -63,7 +63,7 @@ public class FlashXlsxAdvancedTests
           var ctxUser = new ImportContext(EstAdministrateur: false, PlafondValidation: 1000m);
           var writeOpts = new XlsxWriteOptions<FactureContextuelle, ImportContext>(ctxUser);
 
-          using var ms = new MemoryStream();
+        await using var ms = new MemoryStream();
           await FlashXlsxSerializer.WriteAsync(ms, factures, writeOpts);
 
           // 2. Import en tant qu'utilisateur standard (plafond 1000m) => FAC-02 doit déclencher RequiredMissing sur CodeApprobation
@@ -118,7 +118,7 @@ public class FlashXlsxAdvancedTests
                await Task.CompletedTask;
           }
 
-          using var ms = new MemoryStream();
+        await using var ms = new MemoryStream();
           await FlashXlsxSerializer.WriteAsync(ms, GenerateRowsAsync(rowCount));
 
           ms.Position = 0;
@@ -138,10 +138,10 @@ public class FlashXlsxAdvancedTests
      [Fact]
      public async Task CustomHeaderRow_And_SparseCells_ShouldMapCorrectColumns()
      {
-          // Construction d'un fichier XLSX minimal avec un titre en ligne 1, une ligne vide en 2,
-          // les en-têtes en ligne 3, et une cellule manquante (B4 omise dans le XML)
-          using var ms = new MemoryStream();
-          using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
+        // Construction d'un fichier XLSX minimal avec un titre en ligne 1, une ligne vide en 2,
+        // les en-têtes en ligne 3, et une cellule manquante (B4 omise dans le XML)
+        await using var ms = new MemoryStream();
+        await using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
           {
                AddEntry(archive, "[Content_Types].xml",
                    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
@@ -208,7 +208,7 @@ public class FlashXlsxAdvancedTests
             new() { ["Index"] = 3, ["Libelle"] = "JamaisLu", ["Valeur"] = 30.0 }
         };
 
-          using var ms = new MemoryStream();
+        await using var ms = new MemoryStream();
           await FlashXlsxSerializer.WriteDictionaryAsync(ms, rawRows);
 
           ms.Position = 0;
