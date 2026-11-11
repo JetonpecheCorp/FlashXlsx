@@ -4,7 +4,7 @@
   <img src="assets/logoFlashXlsx.png" alt="FlashXlsx Logo" width="220" />
 </p>
 
-[English documentation](https://github.com/JetonpecheCorp/FlashXlsx/blob/main/README.md)
+[English documentation](https://github.com/JetonpecheCorp/FlashXlsx/blob/main/README.en.md)
 
 **FlashXlsx** est le moteur d'import/export de fichiers Excel (`.xlsx`) le plus rapide, léger et sécurisé pour l'écosystème .NET.
 
